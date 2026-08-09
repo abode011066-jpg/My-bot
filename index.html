@@ -1,206 +1,394 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roz Wayxbet - عجلة الحظ</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body {
-            background: radial-gradient(circle, #1a0b2e 0%, #05020a 100%);
-            color: #ffffff;
-            font-family: Tahoma, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 10px;
-            overflow-x: hidden;
-        }
-        h1 {
-            color: #ffd700;
-            margin-bottom: 2px;
-            font-size: 22px;
-            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-        }
-        .subtitle {
-            color: #ff4d4d;
-            font-size: 13px;
-            margin-bottom: 15px;
-            font-weight: bold;
-        }
-        .wheel-container {
-            position: relative;
-            width: 320px;
-            height: 320px;
-            margin: 0 auto 15px auto;
-        }
-        canvas {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            box-shadow: 0 0 30px rgba(255, 215, 0, 0.3), inset 0 0 20px rgba(0,0,0,0.8);
-        }
-        .pointer {
-            position: absolute;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 14px solid transparent;
-            border-right: 14px solid transparent;
-            border-top: 28px solid #ffd700;
-            z-index: 20;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
-        }
-        .center-crown {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 60px;
-            height: 60px;
-            background: radial-gradient(circle, #ffd700 0%, #b8860b 100%);
-            border-radius: 50%;
-            border: 3px solid #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            box-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
-            z-index: 10;
-        }
-        button {
-            background: linear-gradient(45deg, #ff0033, #b30024);
-            color: white;
-            border: 2px solid #ffd700;
-            padding: 12px 35px;
-            font-size: 18px;
-            font-weight: bold;
-            border-radius: 25px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(255, 0, 51, 0.5);
-            transition: 0.2s;
-        }
-        button:active {
-            transform: scale(0.95);
-        }
-        #result {
-            margin-top: 15px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #00ff66;
-            text-shadow: 0 0 8px rgba(0,255,102,0.4);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VIP Exclusive Wheel</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+  
+  <style>
+    :root {
+      --neon-red: #ff003c;
+      --dark-red: #80001a;
+      --bg-dark: #070204;
+      --gold: #ffd700;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background: radial-gradient(circle at center, #2b0008 0%, #070204 100%);
+      color: #ffffff;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px;
+      overflow-x: hidden;
+    }
+
+    /* الهيدر العلوي */
+    .header-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 0, 60, 0.1);
+      border: 1px solid var(--neon-red);
+      box-shadow: 0 0 15px rgba(255, 0, 60, 0.4);
+      padding: 8px 18px;
+      border-radius: 30px;
+      margin-bottom: 10px;
+    }
+
+    .header-title {
+      font-size: 18px;
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 10px var(--neon-red);
+      letter-spacing: 1px;
+    }
+
+    /* منطقة العجلة والمؤشر */
+    .wheel-wrapper {
+      position: relative;
+      width: 330px;
+      height: 330px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 15px 0;
+    }
+
+    /* إطار نيون متوهج حول العجلة */
+    .wheel-outer-ring {
+      position: absolute;
+      width: 325px;
+      height: 325px;
+      border-radius: 50%;
+      border: 4px solid var(--neon-red);
+      box-shadow: 0 0 25px var(--neon-red), inset 0 0 15px var(--neon-red);
+      animation: pulseGlow 2s infinite alternate;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 15px var(--neon-red), inset 0 0 10px var(--neon-red); }
+      100% { box-shadow: 0 0 30px var(--neon-red), inset 0 0 20px var(--neon-red); }
+    }
+
+    /* سهم التوجيه النيون (المؤشر) */
+    .pointer {
+      position: absolute;
+      top: -18px;
+      z-index: 10;
+      width: 36px;
+      height: 42px;
+      filter: drop-shadow(0 0 10px var(--neon-red));
+    }
+
+    canvas {
+      width: 310px;
+      height: 310px;
+      border-radius: 50%;
+      transition: transform 5s cubic-bezier(0.12, 0.8, 0.15, 1);
+      box-shadow: 0 0 30px rgba(0,0,0,0.9);
+    }
+
+    /* المركز الذهبي الفخم */
+    .center-cap {
+      position: absolute;
+      width: 65px;
+      height: 65px;
+      background: radial-gradient(circle, #ffe57f 0%, #b78103 100%);
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+      font-weight: 900;
+      color: #000;
+      font-size: 14px;
+    }
+
+    /* كروت الإحصائيات والمعلومات في الأسفل */
+    .info-container {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      max-width: 360px;
+      margin-bottom: 15px;
+    }
+
+    .info-card {
+      flex: 1;
+      background: rgba(20, 5, 10, 0.8);
+      border: 1px solid rgba(255, 0, 60, 0.3);
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    }
+
+    .card-label {
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+
+    .card-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--gold);
+      text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+    }
+
+    /* زر "ابدأ الدوران" النيون الأحمر */
+    .spin-btn {
+      width: 100%;
+      max-width: 360px;
+      padding: 16px;
+      border: none;
+      border-radius: 30px;
+      background: linear-gradient(135deg, #ff003c 0%, #990024 100%);
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(255, 0, 60, 0.6);
+      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      transition: all 0.2s ease;
+      letter-spacing: 1px;
+    }
+
+    .spin-btn:active {
+      transform: scale(0.96);
+      box-shadow: 0 0 10px rgba(255, 0, 60, 0.4);
+    }
+
+    .spin-btn:disabled {
+      background: #333;
+      box-shadow: none;
+      color: #777;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
 <body>
 
-    <h1>Roz Wayxbet</h1>
-    <div class="subtitle">عجلة الحظ الملكية</div>
+  <!-- الهيدر -->
+  <div class="header-badge">
+    <span style="color: var(--neon-red);">👑</span>
+    <span class="header-title">VIP EXCLUSIVE</span>
+  </div>
 
-    <div class="wheel-container">
-        <div class="pointer"></div>
-        <div class="center-crown">👑</div>
-        <canvas id="wheel" width="500" height="500"></canvas>
+  <!-- العجلة -->
+  <div class="wheel-wrapper">
+    <div class="wheel-outer-ring"></div>
+    
+    <!-- سهم التوجيه الأحمر -->
+    <svg class="pointer" viewBox="0 0 30 40">
+      <polygon points="15,40 0,0 30,0" fill="#ff003c" stroke="#ffffff" stroke-width="2"/>
+    </svg>
+
+    <canvas id="wheelCanvas" width="600" height="600"></canvas>
+
+    <div class="center-cap">
+      <span style="font-size: 10px;">👑</span>
+      <span>VIP</span>
     </div>
+  </div>
 
-    <button id="spinBtn" onclick="spinWheel()">تدوير العجلة 🎡</button>
-    <div id="result"></div>
+  <!-- كروت البيانات -->
+  <div class="info-container">
+    <div class="info-card">
+      <div class="card-label">الرصيد الحالي</div>
+      <div class="card-value" id="balance-val">0 ليرة</div>
+    </div>
+    <div class="info-card">
+      <div class="card-label">اللفات المتاحة</div>
+      <div class="card-value" id="spins-val" style="color: var(--neon-red);">0</div>
+    </div>
+  </div>
 
-    <script>
-        const canvas = document.getElementById('wheel');
-        const ctx = canvas.getContext('2d');
-        
-        // الأقسام والجوائز المطابقة لطلبك
-        const sectors = [
-            { label: "0", color: "#110826" },
-            { label: "500", color: "#1f0f3d" },
-            { label: "1000", color: "#32145a" },
-            { label: "2500", color: "#1f0f3d" },
-            { label: "5000", color: "#110826" },
-            { label: "Bons5%", color: "#4a154b" },
-            { label: "10000", color: "#110826" },
-            { label: "25000", color: "#1f0f3d" },
-            { label: "50000", color: "#32145a" },
-            { label: "bons10%", color: "#4a154b" },
-            { label: "100000", color: "#1f0f3d" },
-            { label: "1m", color: "#5c1330" }
-        ];
+  <!-- زر التشغيل -->
+  <button class="spin-btn" id="spin-btn" onclick="startSpin()">ابدأ الدوران 🎯</button>
 
-        const numSectors = sectors.length;
-        const arc = Math.PI / (numSectors / 2);
-        let startAngle = 0;
-        let spinning = false;
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
 
-        function drawSector(sector, i) {
-            const angle = startAngle + i * arc;
-            ctx.beginPath();
-            ctx.fillStyle = sector.color;
-            ctx.moveTo(250, 250);
-            ctx.arc(250, 250, 250, angle, angle + arc, false);
-            ctx.lineTo(250, 250);
-            ctx.fill();
-            
-            // رسم خطوط فاصلة ذهبية فاخرة بين القطاعات
-            ctx.strokeStyle = "#ffd700";
-            ctx.lineWidth = 2;
-            ctx.stroke();
+    const userId = tg?.initDataUnsafe?.user?.id || 123456;
+    const canvas = document.getElementById("wheelCanvas");
+    const ctx = canvas.getContext("2d");
+    const spinBtn = document.getElementById("spin-btn");
 
-            ctx.save();
-            ctx.translate(250, 250);
-            ctx.rotate(angle + arc / 2);
-            ctx.textAlign = "right";
-            ctx.fillStyle = "#ffd700";
-            ctx.font = "bold 20px Tahoma";
-            ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
-            ctx.shadowBlur = 4;
-            ctx.fillText(sector.label, 210, 8);
-            ctx.restore();
+    let userSpins = 0;
+    let userBalance = 0;
+    let isSpinning = false;
+    let currentRotation = 0;
+
+    // أقسام العجلة بتصميم الكازينو الأسود والأحمر
+    const prizes = [
+      { label: "0", sub: "حظ أوفر", color: "#111111", textCol: "#ff4d4d", icon: "❌" },
+      { label: "5", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "🪙" },
+      { label: "10", sub: "ليرة", color: "#111111", textCol: "#ffd700", icon: "🪙" },
+      { label: "25", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "💰" },
+      { label: "50", sub: "ليرة", color: "#111111", textCol: "#ffd700", icon: "💰" },
+      { label: "100", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "💎" },
+      { label: "500", sub: "ليرة", color: "#111111", textCol: "#ffd700", icon: "💎" },
+      { label: "1000", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "👑" }
+    ];
+
+    const numSlices = prizes.length;
+    const sliceAngle = (2 * Math.PI) / numSlices;
+
+    function drawWheel() {
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = canvas.width / 2;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = 0; i < numSlices; i++) {
+        const angle = i * sliceAngle;
+
+        // رسم الشريحة
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, angle, angle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = prizes[i].color;
+        ctx.fill();
+
+        // حدود الشريحة النيون
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ff003c";
+        ctx.stroke();
+
+        // رسم النص والأيقونة
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(angle + sliceAngle / 2);
+        ctx.textAlign = "right";
+        ctx.fillStyle = prizes[i].textCol;
+
+        // الرقم / الجائزة
+        ctx.font = "bold 36px 'Segoe UI', sans-serif";
+        ctx.fillText(`${prizes[i].icon} ${prizes[i].label}`, radius - 40, 0);
+
+        // النص الفرعي
+        ctx.font = "18px 'Segoe UI', sans-serif";
+        ctx.fillStyle = "#aaa";
+        ctx.fillText(prizes[i].sub, radius - 40, 28);
+
+        ctx.restore();
+      }
+    }
+
+    drawWheel();
+
+    async function loadUserData() {
+      try {
+        const res = await fetch(`/api/user/${userId}`);
+        const data = await res.json();
+        if (data.success) {
+          userSpins = data.spins;
+          userBalance = data.balance;
+          updateUI();
+        }
+      } catch (err) {}
+    }
+
+    function updateUI() {
+      document.getElementById("spins-val").innerText = userSpins;
+      document.getElementById("balance-val").innerText = userBalance.toLocaleString() + " ليرة";
+      spinBtn.disabled = userSpins <= 0 || isSpinning;
+    }
+
+    async function startSpin() {
+      if (isSpinning || userSpins <= 0) return;
+
+      isSpinning = true;
+      spinBtn.disabled = true;
+
+      try {
+        const response = await fetch('/api/spin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId })
+        });
+        const result = await response.json();
+
+        if (!result.success) {
+          Swal.fire({ title: 'تنبيـه', text: result.message, icon: 'warning', confirmButtonColor: '#ff003c' });
+          isSpinning = false;
+          updateUI();
+          return;
         }
 
-        function drawWheel() {
-            ctx.clearRect(0, 0, 500, 500);
-            for (let i = 0; i < numSectors; i++) {
-                drawSector(sectors[i], i);
-            }
-            
-            // رسم الإطار الخارجي الذهبي للعجلة
-            ctx.beginPath();
-            ctx.arc(250, 250, 248, 0, 2 * Math.PI);
-            ctx.strokeStyle = "#ffd700";
-            ctx.lineWidth = 6;
-            ctx.stroke();
-        }
+        rotateToSlice(result.prize_index, result);
+      } catch (e) {
+        // تجربة بصرية مفردة في حال عدم الاتصال بالسيرفر بعد:
+        const randomTarget = Math.floor(Math.random() * numSlices);
+        rotateToSlice(randomTarget, { prize: prizes[randomTarget], new_balance: userBalance, remaining_spins: userSpins - 1 });
+      }
+    }
 
-        function spinWheel() {
-            if (spinning) return;
-            spinning = true;
-            document.getElementById('result').innerText = "";
-            
-            let randomAngle = Math.random() * 2000 + 4000;
-            let currentRotation = 0;
-            let spinInterval = setInterval(() => {
-                currentRotation += 25;
-                startAngle += (25 * Math.PI / 180);
-                drawWheel();
-                if (currentRotation >= randomAngle) {
-                    clearInterval(spinInterval);
-                    spinning = false;
-                    
-                    const degrees = (startAngle * 180 / Math.PI) % 360;
-                    const index = Math.floor((360 - degrees) / (360 / numSectors)) % numSectors;
-                    const winningPrize = sectors[index].label;
-                    
-                    document.getElementById('result').innerText = `🎉 مبروك! لقد ربحت: ${winningPrize}`;
-                    
-                    if (window.Telegram && window.Telegram.WebApp) {
-                        window.Telegram.WebApp.sendData(winningPrize);
-                    }
-                }
-            }, 25);
-        }
+    function rotateToSlice(sliceIndex, resultData) {
+      const extraRounds = 6;
+      const sliceCenterAngle = (sliceIndex * (360 / numSlices)) + ((360 / numSlices) / 2);
+      const targetDegree = (360 - sliceCenterAngle - 90) % 360;
 
-        drawWheel();
-    </script>
+      const finalDegree = (extraRounds * 360) + targetDegree;
+      currentRotation += finalDegree;
+
+      canvas.style.transform = `rotate(${currentRotation}deg)`;
+
+      setTimeout(() => {
+        isSpinning = false;
+        userSpins = resultData.remaining_spins ?? (userSpins - 1);
+        userBalance = resultData.new_balance ?? userBalance;
+        updateUI();
+
+        const prize = prizes[sliceIndex];
+        if (prize.label !== "0") {
+          confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+          Swal.fire({
+            icon: 'success',
+            title: '🎉 مبروك الفوز!',
+            text: `ربحت ${prize.label} ${prize.sub}`,
+            background: '#111',
+            color: '#fff',
+            confirmButtonColor: '#ff003c'
+          });
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'حظ أوفر!',
+            text: 'لم تفز هذه المرة، حاول مجدداً.',
+            background: '#111',
+            color: '#fff',
+            confirmButtonColor: '#333'
+          });
+        }
+      }, 5000);
+    }
+
+    loadUserData();
+  </script>
 </body>
 </html>
