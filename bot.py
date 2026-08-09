@@ -37,7 +37,7 @@ threading.Thread(target=run_dummy_server, daemon=True).start()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = "YOUR_BOT_TOKEN_HERE"  # ضع توكن البوت هنا
+TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"  # ضع توكن البوت هنا
 ADMIN_ID = 7255100997
 CHANNEL_PROGRAMMER = "@lerafree"
 CHANNEL_BOT = "@cashinsher"
