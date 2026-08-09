@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roz Wayxbet - عجلة الحظ</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background: radial-gradient(circle, #1a0b2e 0%, #05020a 100%);
+            color: #ffffff;
+            font-family: Tahoma, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 10px;
+            overflow-x: hidden;
+        }
+        h1 {
+            color: #ffd700;
+            margin-bottom: 2px;
+            font-size: 22px;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        .subtitle {
+            color: #ff4d4d;
+            font-size: 13px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .wheel-container {
+            position: relative;
+            width: 320px;
+            height: 320px;
+            margin: 0 auto 15px auto;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.3), inset 0 0 20px rgba(0,0,0,0.8);
+        }
+        .pointer {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 28px solid #ffd700;
+            z-index: 20;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+        }
+        .center-crown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background: radial-gradient(circle, #ffd700 0%, #b8860b 100%);
+            border-radius: 50%;
+            border: 3px solid #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
+            z-index: 10;
+        }
+        button {
+            background: linear-gradient(45deg, #ff0033, #b30024);
+            color: white;
+            border: 2px solid #ffd700;
+            padding: 12px 35px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 0, 51, 0.5);
+            transition: 0.2s;
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        #result {
+            margin-top: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #00ff66;
+            text-shadow: 0 0 8px rgba(0,255,102,0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Roz Wayxbet</h1>
+    <div class="subtitle">عجلة الحظ الملكية</div>
+
+    <div class="wheel-container">
+        <div class="pointer"></div>
+        <div class="center-crown">👑</div>
+        <canvas id="wheel" width="500" height="500"></canvas>
+    </div>
+
+    <button id="spinBtn" onclick="spinWheel()">تدوير العجلة 🎡</button>
+    <div id="result"></div>
+
+    <script>
+        const canvas = document.getElementById('wheel');
+        const ctx = canvas.getContext('2d');
+        
+        // الأقسام والجوائز المطابقة لطلبك
+        const sectors = [
+            { label: "0", color: "#110826" },
+            { label: "500", color: "#1f0f3d" },
+            { label: "1000", color: "#32145a" },
+            { label: "2500", color: "#1f0f3d" },
+            { label: "5000", color: "#110826" },
+            { label: "Bons5%", color: "#4a154b" },
+            { label: "10000", color: "#110826" },
+            { label: "25000", color: "#1f0f3d" },
+            { label: "50000", color: "#32145a" },
+            { label: "bons10%", color: "#4a154b" },
+            { label: "100000", color: "#1f0f3d" },
+            { label: "1m", color: "#5c1330" }
+        ];
+
+        const numSectors = sectors.length;
+        const arc = Math.PI / (numSectors / 2);
+        let startAngle = 0;
+        let spinning = false;
+
+        function drawSector(sector, i) {
+            const angle = startAngle + i * arc;
+            ctx.beginPath();
+            ctx.fillStyle = sector.color;
+            ctx.moveTo(250, 250);
+            ctx.arc(250, 250, 250, angle, angle + arc, false);
+            ctx.lineTo(250, 250);
+            ctx.fill();
+            
+            // رسم خطوط فاصلة ذهبية فاخرة بين القطاعات
+            ctx.strokeStyle = "#ffd700";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.save();
+            ctx.translate(250, 250);
+            ctx.rotate(angle + arc / 2);
+            ctx.textAlign = "right";
+            ctx.fillStyle = "#ffd700";
+            ctx.font = "bold 20px Tahoma";
+            ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+            ctx.shadowBlur = 4;
+            ctx.fillText(sector.label, 210, 8);
+            ctx.restore();
+        }
+
+        function drawWheel() {
+            ctx.clearRect(0, 0, 500, 500);
+            for (let i = 0; i < numSectors; i++) {
+                drawSector(sectors[i], i);
+            }
+            
+            // رسم الإطار الخارجي الذهبي للعجلة
+            ctx.beginPath();
+            ctx.arc(250, 250, 248, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#ffd700";
+            ctx.lineWidth = 6;
+            ctx.stroke();
+        }
+
+        function spinWheel() {
+            if (spinning) return;
+            spinning = true;
+            document.getElementById('result').innerText = "";
+            
+            let randomAngle = Math.random() * 2000 + 4000;
+            let currentRotation = 0;
+            let spinInterval = setInterval(() => {
+                currentRotation += 25;
+                startAngle += (25 * Math.PI / 180);
+                drawWheel();
+                if (currentRotation >= randomAngle) {
+                    clearInterval(spinInterval);
+                    spinning = false;
+                    
+                    const degrees = (startAngle * 180 / Math.PI) % 360;
+                    const index = Math.floor((360 - degrees) / (360 / numSectors)) % numSectors;
+                    const winningPrize = sectors[index].label;
+                    
+                    document.getElementById('result').innerText = `🎉 مبروك! لقد ربحت: ${winningPrize}`;
+                    
+                    if (window.Telegram && window.Telegram.WebApp) {
+                        window.Telegram.WebApp.sendData(winningPrize);
+                    }
+                }
+            }, 25);
+        }
+
+        drawWheel();
+    </script>
+</body>
+</html>
