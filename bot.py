@@ -2,6 +2,9 @@ import logging
 import sqlite3
 import threading
 import re
+import json
+import random
+from urllib.parse import parse_qs, urlparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import (
     Update,
@@ -78,41 +81,125 @@ WHEEL_HTML = """<!DOCTYPE html>
     }
     drawWheel();
 
-    function spin() {
+    async function spin() {
       if(isSpinning) return;
+      const userId = tg.initDataUnsafe?.user?.id;
+      if(!userId) {
+        document.getElementById('result').innerText = "❌ تعذر التعرّف على حسابك بفي التلجرام!";
+        return;
+      }
+
       isSpinning = true;
-      document.getElementById('result').innerText = "جاري تدوير العجلة...";
-      let speed = Math.random() * 0.3 + 0.4;
-      let duration = 3500;
-      let start = Date.now();
-      
-      let timer = setInterval(() => {
-        if (Date.now() - start > duration) {
-          clearInterval(timer);
+      document.getElementById('result').innerText = "جاري الاتصال بالسيرفر والتحقق...";
+
+      try {
+        const response = await fetch('/api/spin?user_id=' + userId);
+        const data = await response.json();
+
+        if(!data.success) {
+          document.getElementById('result').innerText = "❌ " + (data.error || "لا تملك لفات مجانية متاحة!");
           isSpinning = false;
-          const winningIndex = Math.floor((prizes.length - (startAngle % (2 * Math.PI)) / arc) % prizes.length);
-          const wonPrize = prizes[winningIndex];
-          document.getElementById('result').innerText = "🎉 مبروك! حصلت على: " + wonPrize;
-          tg.sendData(JSON.stringify({ prize: wonPrize }));
           return;
         }
-        startAngle += speed;
-        speed *= 0.985;
-        drawWheel();
-      }, 20);
+
+        const winningIndex = data.winning_index;
+        const wonPrize = data.prize_name;
+
+        let totalRounds = 5;
+        let targetAngle = (2 * Math.PI * totalRounds) + ((prizes.length - winningIndex - 0.5) * arc);
+        let currentRotation = 0;
+        let speed = 0.3;
+
+        let timer = setInterval(() => {
+          if (currentRotation >= targetAngle) {
+            clearInterval(timer);
+            isSpinning = false;
+            document.getElementById('result').innerText = "🎉 مبروك! حصلت على: " + wonPrize;
+            tg.sendData(JSON.stringify({ prize: wonPrize }));
+            return;
+          }
+          startAngle += speed;
+          currentRotation += speed;
+          if (targetAngle - currentRotation < Math.PI) {
+            speed = Math.max(0.01, speed * 0.95);
+          }
+          drawWheel();
+        }, 20);
+
+      } catch (err) {
+        document.getElementById('result').innerText = "❌ حدث خطأ أثناء الاتصال بالسيرفر.";
+        isSpinning = false;
+      }
     }
   </script>
 </body>
 </html>"""
 
+# ----------------- معالجة طلبات API للعجلة -----------------
 class WebServerHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        if "/wheel" in self.path or self.path == "/":
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/spin":
+            params = parse_qs(parsed.query)
+            user_id = params.get("user_id", [None])[0]
+
+            self.send_response(200)
+            self.send_header("Content-type", "application/json; charset=utf-8")
+            self.end_headers()
+
+            if not user_id:
+                self.wfile.write(json.dumps({"success": False, "error": "المستخدم غير معرّف"}).encode("utf-8"))
+                return
+
+            conn = sqlite3.connect("wayxbet.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT spins FROM users WHERE user_id = ?", (user_id,))
+            res = cursor.fetchone()
+
+            if not res or res[0] <= 0:
+                conn.close()
+                self.wfile.write(json.dumps({"success": False, "error": "ليس لديك لفات مجانية متاحة!"}).encode("utf-8"))
+                return
+
+            cursor.execute("SELECT id, prize_name, weight, amount, prize_type FROM wheel_prizes ORDER BY id ASC")
+            prizes_data = cursor.fetchall()
+
+            if not prizes_data:
+                conn.close()
+                self.wfile.write(json.dumps({"success": False, "error": "لم يتم إعداد الجوائز بعد"}).encode("utf-8"))
+                return
+
+            weights = [p[2] for p in prizes_data]
+            chosen = random.choices(prizes_data, weights=weights, k=1)[0]
+            prize_id, prize_name, weight, amount, prize_type = chosen
+
+            winning_index = prize_id - 1
+
+            cursor.execute("UPDATE users SET spins = spins - 1 WHERE user_id = ?", (user_id,))
+            if prize_type == "balance" and amount > 0:
+                cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+            elif prize_type == "spin" and amount > 0:
+                cursor.execute("UPDATE users SET spins = spins + ? WHERE user_id = ?", (int(amount), user_id))
+
+            conn.commit()
+            conn.close()
+
+            resp = {
+                "success": True,
+                "winning_index": winning_index,
+                "prize_name": prize_name,
+                "amount": amount,
+                "type": prize_type
+            }
+            self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
+
+        elif "/wheel" in self.path or self.path == "/":
+            self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(WHEEL_HTML.encode("utf-8"))
         else:
+            self.send_response(200)
             self.send_header("Content-type", "text/plain; charset=utf-8")
             self.end_headers()
             self.wfile.write("Roz Wayxbet VIP Bot is active and running!".encode("utf-8"))
@@ -126,6 +213,7 @@ def run_dummy_server():
         print(f"Dummy server error: {e}")
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
+
 # -------------------------------------------------------------
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -136,7 +224,7 @@ ADMIN_ID = 7255100997
 CHANNEL_PROGRAMMER = "@lerafree"
 SITE_URL = "https://wayxbet10.com"
 
-# حالات المحادثة (Conversation States)
+# حالات المحادثة
 (
     GET_CAPTCHA_QUESTION,
     GET_CAPTCHA_PIN,
@@ -163,7 +251,9 @@ SITE_URL = "https://wayxbet10.com"
     ADMIN_BAN_USER,
     ADMIN_VIEW_USER_DETAILS,
     ADMIN_ADD_ADMIN_ID,
-) = range(25)
+    ADMIN_EDIT_WHEEL_WEIGHT,
+    ADMIN_CHANGE_USER_BAL
+) = range(27)
 
 # ----------------- إعداد قاعدة البيانات -----------------
 def init_db():
@@ -250,6 +340,16 @@ def init_db():
             admin_id INTEGER PRIMARY KEY
         )
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wheel_prizes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prize_name TEXT,
+            weight INTEGER,
+            amount REAL,
+            prize_type TEXT
+        )
+    """)
     
     defaults = {
         "syriatel_num": "0998682581",
@@ -264,7 +364,7 @@ def init_db():
         "welcome_bonus": "1000",
         "welcome_bonus_active": "1",
         "currency_ratio": "100",
-        "free_spin_on_ref": "1" # 1 ميزة اللفة المجانية للإحالة مفعلة، 0 معطلة
+        "free_spin_on_ref": "1"
     }
     
     for k, v in defaults.items():
@@ -273,6 +373,18 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO admins (admin_id) VALUES (?)", (ADMIN_ID,))
     cursor.execute("INSERT OR IGNORE INTO forced_channels (channel_username) VALUES (?)", ("@cashinsher",))
     
+    cursor.execute("SELECT COUNT(*) FROM wheel_prizes")
+    if cursor.fetchone()[0] == 0:
+        default_prizes = [
+            (1, '1,000 ليرة', 30, 1000, 'balance'),
+            (2, 'حظ أوفر', 40, 0, 'none'),
+            (3, '5,000 ليرة', 15, 5000, 'balance'),
+            (4, 'لفة إضافية', 10, 1, 'spin'),
+            (5, '10,000 ليرة', 5, 10000, 'balance'),
+            (6, '2,000 ليرة', 20, 2000, 'balance')
+        ]
+        cursor.executemany("INSERT INTO wheel_prizes (id, prize_name, weight, amount, prize_type) VALUES (?, ?, ?, ?, ?)", default_prizes)
+
     conn.commit()
     conn.close()
 
@@ -361,7 +473,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ref_id = int(args[0]) if args and args[0].isdigit() and int(args[0]) != user.id else None
         cursor.execute("INSERT OR IGNORE INTO users (user_id, username, referred_by) VALUES (?, ?, ?)", (user.id, user.username, ref_id))
         
-        # منح بونص الإحالة ولفّة مجانية عند التفعيل
         if ref_id:
             try:
                 ref_percent = float(get_setting("ref_bonus_percent") or 5)
@@ -634,7 +745,6 @@ async def receive_bot_to_site_amount(update: Update, context: ContextTypes.DEFAU
         conn.close()
         return BOT_TO_SITE_AMOUNT
 
-    # خصم الرصيد مؤقتاً لحين موافقة الأدمن
     cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user.id))
     cursor.execute("INSERT INTO transactions (user_id, type, method, amount, account_num) VALUES (?, 'bot_to_site', 'Internal', ?, ?)", (user.id, amount, res[0]))
     tx_id = cursor.lastrowid
@@ -916,7 +1026,7 @@ async def receive_support_message(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text("✅ تم إرسال رسالتك إلى الدعم الفني، وسيتم الرد عليك قريباً.")
     return await show_main_menu(update, context)
 
-# ----------------- لوحة الإدارة ومعالجة اسم الأدمن -----------------
+# ----------------- لوحة الإدارة المتطورة بالكامل (VIP) -----------------
 async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
@@ -927,20 +1037,396 @@ async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     free_spin_state = "مفعلة ✅" if get_setting("free_spin_on_ref") == "1" else "معطلة ❌"
 
     kb = [
-        [InlineKeyboardButton("👥 تقرير الإحالات النشطة والتوزيع (10 أيام)", callback_data="admin_active_refs")],
+        [InlineKeyboardButton("📊 تقرير الإحالات النشطة والتوزيع", callback_data="admin_active_refs")],
+        [InlineKeyboardButton("🎡 خوارزمية العجلة والنسب", callback_data="adm_wheel_config")],
         [InlineKeyboardButton(f"⚙️ لفة مجانية للإحالة: {free_spin_state}", callback_data="toggle_free_spin")],
         [InlineKeyboardButton("📢 إذاعة عامة", callback_data="adm_broadcast"), InlineKeyboardButton("🎁 إضافة كود هدية", callback_data="adm_add_gift")],
-        [InlineKeyboardButton("⚙️ إعدادات الأرقام والنسب", callback_data="adm_settings")],
+        [InlineKeyboardButton("⚙️ إعدادات الأرقام والأسعار", callback_data="adm_settings"), InlineKeyboardButton("📢 القنوات الإجبارية", callback_data="adm_channels")],
+        [InlineKeyboardButton("👤 إدارة مستخدم / حظر", callback_data="adm_users_manage"), InlineKeyboardButton("👮‍♂️ إضافة أدمن جديد", callback_data="adm_add_admin")],
+        [InlineKeyboardButton("📜 سجلات المعاملات", callback_data="adm_logs_view")],
         [InlineKeyboardButton("🔙 الصفحة الرئيسية", callback_data="back_home")]
     ]
 
     await query.message.edit_text(
-        "⚙️ **لوحة التحكم والإدارة الاحترافية (VIP):**\n\nاختر الخيار المطلوبة من القائمة أدناه:",
+        "⚙️ **لوحة التحكم والإدارة الاحترافية (VIP):**\n\nاختر الخيار المطلوب من القائمة أدناه:",
         reply_markup=InlineKeyboardMarkup(kb),
         parse_mode="Markdown"
     )
 
-# تقرير العملاء المؤهلين للإحالات 5+ نشطين
+# ----------------- خوارزمية العجلة والنسب -----------------
+async def admin_wheel_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, prize_name, weight, amount, prize_type FROM wheel_prizes ORDER BY id ASC")
+    prizes = cursor.fetchall()
+    conn.close()
+
+    total_weight = sum([p[2] for p in prizes]) or 1
+
+    msg = "🎡 **تعديل خوارزمية العجلة والنسب المئوية:**\n\n"
+    kb = []
+    for p in prizes:
+        pid, pname, weight, amt, ptype = p
+        percentage = (weight / total_weight) * 100
+        msg += f"🔹 **الجائزة #{pid}:** {pname}\n" \
+               f"   🎯 الوزن: `{weight}` ({percentage:.1f}%)\n"
+        kb.append([InlineKeyboardButton(f"✏️ تعديل وزن (#{pid}) {pname}", callback_data=f"edit_w_{pid}")])
+
+    kb.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")])
+    await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+
+async def admin_edit_wheel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    prize_id = query.data.split("_")[-1]
+    context.user_data['edit_prize_id'] = prize_id
+    await query.answer()
+    await query.message.edit_text(f"🔢 أدخل الوزن الاحتالي الجديد للجائزة #{prize_id} (كلما زاد الرقم زادت نسبة ظهور الجائزة):")
+    return ADMIN_EDIT_WHEEL_WEIGHT
+
+async def receive_admin_edit_wheel_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if not text.isdigit():
+        await update.message.reply_text("❌ يرجى إدخال رقم صحيح.")
+        return ADMIN_EDIT_WHEEL_WEIGHT
+
+    new_weight = int(text)
+    prize_id = context.user_data.get('edit_prize_id')
+
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE wheel_prizes SET weight = ? WHERE id = ?", (new_weight, prize_id))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(f"✅ تم تحديث نسبة الجائزة #{prize_id} بنجاح!")
+    return await show_main_menu(update, context)
+
+# ----------------- الإعدادات العامة والأرقام -----------------
+async def admin_settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+
+    syria = get_setting("syriatel_num")
+    sham = get_setting("sham_num")
+    min_d = get_setting("min_deposit")
+    min_w = get_setting("min_withdraw")
+    ratio = get_setting("currency_ratio")
+
+    kb = [
+        [InlineKeyboardButton(f"📱 سيريتل: {syria}", callback_data="set_key_syriatel_num")],
+        [InlineKeyboardButton(f"💳 شام كاش: {sham}", callback_data="set_key_sham_num")],
+        [InlineKeyboardButton(f"🔻 أدنى شحن: {min_d}", callback_data="set_key_min_deposit")],
+        [InlineKeyboardButton(f"🔻 أدنى سحب: {min_w}", callback_data="set_key_min_withdraw")],
+        [InlineKeyboardButton(f"🔱 نسبة الليرة: {ratio}", callback_data="set_key_currency_ratio")],
+        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
+    ]
+
+    await query.message.edit_text("⚙️ **إعدادات البوت والتحويلات:**\n\nاضغط على المفتاح للقيام بالتعديل:", reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_set_setting_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    key = query.data.replace("set_key_", "")
+    context.user_data['setting_key'] = key
+    await query.answer()
+    await query.message.edit_text(f"📝 أدخل القيمة الجديدة للإعداد (`{key}`):", parse_mode="Markdown")
+    return ADMIN_SET_SETTING_VAL
+
+async def receive_admin_setting_val(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    val = update.message.text.strip()
+    key = context.user_data.get('setting_key')
+
+    if key:
+        set_setting(key, val)
+        await update.message.reply_text(f"✅ تم حفظ القيمة الجديدة للإعداد `{key}` بنجاح!", parse_mode="Markdown")
+
+    return await show_main_menu(update, context)
+
+# ----------------- الإذاعة العامة -----------------
+async def admin_broadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+    await query.message.edit_text("📢 أدخل نص الرسالة للإذاعة على كافة مستخدمي البوت:")
+    return ADMIN_BROADCAST
+
+async def receive_admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg_text = update.message.text
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users WHERE banned = 0")
+    users = cursor.fetchall()
+    conn.close()
+
+    count = 0
+    for u in users:
+        try:
+            await context.bot.send_message(chat_id=u[0], text=f"📢 **تنويه هام من الإدارة:**\n\n{msg_text}", parse_mode="Markdown")
+            count += 1
+        except:
+            pass
+
+    await update.message.reply_text(f"✅ تم إرسال الإذاعة بنجاح إلى {count} مستخدم.")
+    return await show_main_menu(update, context)
+
+# ----------------- إنشاء كود هدية -----------------
+async def admin_add_gift_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+    await query.message.edit_text("🎁 اكتب اسم كود الهدية (مثال: `GIFT1000`):", parse_mode="Markdown")
+    return ADMIN_ADD_GIFT_CODE
+
+async def receive_gift_code_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    code = update.message.text.strip().upper()
+    context.user_data['new_gift_code'] = code
+    await update.message.reply_text(f"💵 أدخل مبلغ الهدية لكود `{code}`:", parse_mode="Markdown")
+    return ADMIN_ADD_GIFT_AMT
+
+async def receive_gift_code_amt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        amt = float(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("❌ يرجى كتابة مبلغ صحيح.")
+        return ADMIN_ADD_GIFT_AMT
+
+    code = context.user_data.get('new_gift_code')
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO gift_codes (code, amount) VALUES (?, ?)", (code, amt))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(f"✅ تم إنشاء كود الهدية `{code}` بقيمة {format_currency(amt)} بنجاح!", parse_mode="Markdown")
+    return await show_main_menu(update, context)
+
+# ----------------- الرد على الدعم الفني -----------------
+async def admin_reply_support_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    ticket_id = query.data.split("_")[-1]
+    context.user_data['rep_ticket_id'] = ticket_id
+    await query.answer()
+    await query.message.edit_text(f"💬 اكتب نص الرد على تذكرة الدعم #{ticket_id}:")
+    return ADMIN_REPLY_SUPPORT
+
+async def receive_admin_reply_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_msg = update.message.text.strip()
+    ticket_id = context.user_data.get('rep_ticket_id')
+
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM support_tickets WHERE id = ?", (ticket_id,))
+    res = cursor.fetchone()
+
+    if res:
+        uid = res[0]
+        cursor.execute("UPDATE support_tickets SET status = 'closed', reply = ? WHERE id = ?", (reply_msg, ticket_id))
+        conn.commit()
+        try:
+            await context.bot.send_message(
+                chat_id=uid,
+                text=f"📞 **رد الدعم الفني على استفسارك:**\n\n💬 {reply_msg}",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+        await update.message.reply_text(f"✅ تم إرسال الرد للعميل على التذكرة #{ticket_id}.")
+
+    conn.close()
+    return await show_main_menu(update, context)
+
+# ----------------- إدارة المستخدمين والحظر والأدمن -----------------
+async def admin_users_manage_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+
+    kb = [
+        [InlineKeyboardButton("🔍 تفاصيل مستخدم", callback_data="adm_view_u"), InlineKeyboardButton("🚫 حظر / فك حظر مستخدم", callback_data="adm_ban_u")],
+        [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
+    ]
+    await query.message.edit_text("👤 **إدارة المستخدمين والحظر:**", reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_view_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.edit_text("🔎 أدخل آيدي المستخدم (ID) للبحث عن تفاصيله:")
+    return ADMIN_VIEW_USER_DETAILS
+
+async def receive_admin_view_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid_str = update.message.text.strip()
+    if not uid_str.isdigit():
+        await update.message.reply_text("❌ يرجى إدخال آيدي رقمي صحيح.")
+        return ADMIN_VIEW_USER_DETAILS
+
+    uid = int(uid_str)
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, phone, username, balance, spins, active_refs, wayxbet_user, banned FROM users WHERE user_id = ?", (uid,))
+    u = cursor.fetchone()
+    conn.close()
+
+    if not u:
+        await update.message.reply_text("❌ المستخدم غير موجود بالسيستم!")
+    else:
+        banned_str = "نعم 🚫" if u[7] == 1 else "لا ✅"
+        msg = f"👤 **تفاصيل حساب المستخدم:**\n\n" \
+              f"🆔 الآيدي: `{u[0]}`\n" \
+              f"🏷 اليوزر: @{u[2] or 'لا يوجد'}\n" \
+              f"📱 الهاتف: `{u[1] or 'غير مسجل'}`\n" \
+              f"💵 الرصيد: {format_currency(u[3])}\n" \
+              f"🎡 لفات العجلة: {u[4]}\n" \
+              f"👥 الإحالات النشطة: {u[5]}\n" \
+              f"🏷 حساب Wayxbet: `{u[6] or 'غير موجود'}`\n" \
+              f"🚫 محظور: {banned_str}"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    return await show_main_menu(update, context)
+
+async def admin_ban_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.edit_text("🚫 أدخل آيدي المستخدم (ID) لتعديل حالة حظره:")
+    return ADMIN_BAN_USER
+
+async def receive_admin_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid_str = update.message.text.strip()
+    if not uid_str.isdigit():
+        await update.message.reply_text("❌ يرجى إدخال آيدي صحيح.")
+        return ADMIN_BAN_USER
+
+    uid = int(uid_str)
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT banned FROM users WHERE user_id = ?", (uid,))
+    res = cursor.fetchone()
+
+    if res:
+        new_banned = 0 if res[0] == 1 else 1
+        cursor.execute("UPDATE users SET banned = ? WHERE user_id = ?", (new_banned, uid))
+        conn.commit()
+        st = "تم حظره 🚫" if new_banned == 1 else "تم فك حظره ✅"
+        await update.message.reply_text(f"✅ المستخدم `{uid}` {st}.", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ لم يتم العثور على المستخدم.")
+
+    conn.close()
+    return await show_main_menu(update, context)
+
+async def admin_add_admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+    await query.message.edit_text("👮‍♂️ أدخل آيدي (ID) الشخص المراد إضافته كـ أدمن:")
+    return ADMIN_ADD_ADMIN_ID
+
+async def receive_admin_add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid_str = update.message.text.strip()
+    if not uid_str.isdigit():
+        await update.message.reply_text("❌ يرجى إدخال آيدي رقمي صحيح.")
+        return ADMIN_ADD_ADMIN_ID
+
+    uid = int(uid_str)
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO admins (admin_id) VALUES (?)", (uid,))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(f"✅ تم منح صلاحيات الأدمن للمستخدم `{uid}` بنجاح!", parse_mode="Markdown")
+    return await show_main_menu(update, context)
+
+# ----------------- إدارة القنوات الإجبارية -----------------
+async def admin_channels_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT channel_username FROM forced_channels")
+    chans = cursor.fetchall()
+    conn.close()
+
+    msg = "📢 **قائمة القنوات الإجبارية الحالية:**\n\n"
+    kb = []
+    for c in chans:
+        ch = c[0]
+        msg += f"• {ch}\n"
+        kb.append([InlineKeyboardButton(f"❌ حذف {ch}", callback_data=f"del_ch_{ch}")])
+
+    kb.append([InlineKeyboardButton("➕ إضافة قناة جديدة", callback_data="add_ch_new")])
+    kb.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")])
+
+    await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_channel_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+    await query.answer()
+
+    if data.startswith("del_ch_"):
+        ch = data.replace("del_ch_", "")
+        conn = sqlite3.connect("wayxbet.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM forced_channels WHERE channel_username = ?", (ch,))
+        conn.commit()
+        conn.close()
+        await query.message.reply_text(f"✅ تم حذف القناة {ch} بنجاح.")
+        return await admin_panel_handler(update, context)
+
+    elif data == "add_ch_new":
+        await query.message.reply_text("📢 أدخل معرف القناة الجديد مع الأت (مثال: `@mychannel`):")
+        return ADMIN_ADD_CHANNEL
+
+async def receive_admin_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ch = update.message.text.strip()
+    if not ch.startswith("@"):
+        ch = "@" + ch
+
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO forced_channels (channel_username) VALUES (?)", (ch,))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(f"✅ تم إضافة القناة {ch} بنجاح إلى الاشتراك الإجباري.")
+    return await show_main_menu(update, context)
+
+# ----------------- عرض السجلات والأنشطة -----------------
+async def admin_logs_view_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin(query.from_user.id):
+        return
+    await query.answer()
+
+    conn = sqlite3.connect("wayxbet.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, user_id, type, amount, status, admin_name, created_at FROM transactions ORDER BY id DESC LIMIT 10")
+    logs = cursor.fetchall()
+    conn.close()
+
+    msg = "📜 **آخر 10 معاملات وسجلات في السيستم:**\n\n"
+    for l in logs:
+        msg += f"🆔 `#TX{l[0]}` | العميل: `{l[1]}`\n" \
+               f"🔹 النوع: {l[2]} | المبلغ: {l[3]:,.0f}\n" \
+               f"📌 الحالة: {l[4]} | الأدمن: `{l[5] or 'تلقائي'}`\n" \
+               f"📅 التاريخ: {l[6]}\n----------------------------------\n"
+
+    await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]]), parse_mode="Markdown")
+
+# ----------------- تقرير العملاء النشطين -----------------
 async def admin_active_refs_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not is_admin(query.from_user.id):
@@ -968,7 +1454,7 @@ async def admin_active_refs_report(update: Update, context: ContextTypes.DEFAULT
         msg += f"👤 العميل: @{uname or 'غير_محدد'} | ID: `{uid}`\n📱 الهاتف: `{phone or 'غير_مسجل'}`\n👥 الإحالات النشطة: {a_refs}\n💵 مبالغ الشحن عن طريقهم: {format_currency(volume)}\n----------------------------------\n"
 
     conn.close()
-    await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]]), parse_mode="Markdown")
+    await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]), parse_mode="Markdown")
 
 async def toggle_free_spin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -980,7 +1466,7 @@ async def toggle_free_spin_handler(update: Update, context: ContextTypes.DEFAULT
     await query.answer("تم تغيير حالة ميزة اللفة المجانية للإحالة بنجاح!")
     return await admin_panel_handler(update, context)
 
-# ----------------- الحل الشامل لاستجابة اسم الأدمن -----------------
+# ----------------- معالجة وإجراء اسم الأدمن للطلبات -----------------
 async def admin_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
@@ -1024,7 +1510,6 @@ async def receive_admin_action_name(update: Update, context: ContextTypes.DEFAUL
             uid, w_user, w_pass = req
             cursor.execute("UPDATE users SET wayxbet_user = ?, wayxbet_pass = ? WHERE user_id = ?", (w_user, w_pass, uid))
             
-            # زيادة الإحالات النشطة للمُحيل إن وجد
             cursor.execute("SELECT referred_by FROM users WHERE user_id = ?", (uid,))
             ref_res = cursor.fetchone()
             if ref_res and ref_res[0]:
@@ -1039,7 +1524,7 @@ async def receive_admin_action_name(update: Update, context: ContextTypes.DEFAUL
                 )
             except:
                 pass
-        await update.message.reply_text(f"✅ تم تفعيل الطلب #{item_id} بنجاح برابط الأدمن ({admin_name}).")
+        await update.message.reply_text(f"✅ تم تفعيل الطلب #{item_id} بنجاح بواسطة الأدمن ({admin_name}).")
 
     elif action_type == "app_tx":
         cursor.execute("UPDATE transactions SET status = 'approved', admin_name = ? WHERE id = ?", (admin_name, item_id))
@@ -1098,7 +1583,6 @@ async def receive_admin_reject_reason(update: Update, context: ContextTypes.DEFA
         tx = cursor.fetchone()
         if tx:
             uid, t_type, amt = tx
-            # إرجاع المبلغ للمحفظة في حال السحب أو التحويل للموقع
             if t_type in ["withdraw", "bot_to_site"]:
                 cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amt, uid))
             cursor.execute("UPDATE transactions SET status = 'rejected', reject_reason = ? WHERE id = ?", (reason_str, item_id))
@@ -1138,6 +1622,20 @@ def main():
             CallbackQueryHandler(admin_panel_handler, pattern="^admin_panel$"),
             CallbackQueryHandler(admin_active_refs_report, pattern="^admin_active_refs$"),
             CallbackQueryHandler(toggle_free_spin_handler, pattern="^toggle_free_spin$"),
+            CallbackQueryHandler(admin_wheel_config, pattern="^adm_wheel_config$"),
+            CallbackQueryHandler(admin_edit_wheel_start, pattern="^edit_w_"),
+            CallbackQueryHandler(admin_settings_handler, pattern="^adm_settings$"),
+            CallbackQueryHandler(admin_set_setting_start, pattern="^set_key_"),
+            CallbackQueryHandler(admin_broadcast_handler, pattern="^adm_broadcast$"),
+            CallbackQueryHandler(admin_add_gift_handler, pattern="^adm_add_gift$"),
+            CallbackQueryHandler(admin_reply_support_start, pattern="^rep_sup_"),
+            CallbackQueryHandler(admin_users_manage_handler, pattern="^adm_users_manage$"),
+            CallbackQueryHandler(admin_view_user_start, pattern="^adm_view_u$"),
+            CallbackQueryHandler(admin_ban_user_start, pattern="^adm_ban_u$"),
+            CallbackQueryHandler(admin_add_admin_start, pattern="^adm_add_admin$"),
+            CallbackQueryHandler(admin_channels_handler, pattern="^adm_channels$"),
+            CallbackQueryHandler(admin_channel_action, pattern="^(del_ch_|add_ch_new)"),
+            CallbackQueryHandler(admin_logs_view_handler, pattern="^adm_logs_view$"),
             CallbackQueryHandler(admin_action_callback, pattern="^(app_acc_|rej_acc_|app_tx_|rej_tx_)"),
             CallbackQueryHandler(check_sub_callback, pattern="^check_sub$"),
         ],
@@ -1156,6 +1654,16 @@ def main():
             SUPPORT_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_support_message)],
             ADMIN_ACTION_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_action_name)],
             ADMIN_REJECT_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_reject_reason)],
+            ADMIN_BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_broadcast)],
+            ADMIN_ADD_GIFT_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_gift_code_name)],
+            ADMIN_ADD_GIFT_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_gift_code_amt)],
+            ADMIN_SET_SETTING_VAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_setting_val)],
+            ADMIN_REPLY_SUPPORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_reply_support)],
+            ADMIN_ADD_CHANNEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_add_channel)],
+            ADMIN_BAN_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_ban_user)],
+            ADMIN_VIEW_USER_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_view_user)],
+            ADMIN_ADD_ADMIN_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_add_admin)],
+            ADMIN_EDIT_WHEEL_WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_edit_wheel_weight)],
         },
         fallbacks=[
             CommandHandler("start", start),
@@ -1165,7 +1673,7 @@ def main():
     )
 
     app.add_handler(conv_handler)
-    print("🤖 Roz Wayxbet VIP Bot is running successfully!")
+    print("🤖 Roz Wayxbet VIP Bot is running successfully with all algorithms & admin features!")
     app.run_polling()
 
 if __name__ == "__main__":
