@@ -1611,8 +1611,7 @@ def main():
     app.add_handler(CallbackQueryHandler(back_home_callback, pattern="^back_home$"))
     app.add_handler(CallbackQueryHandler(refs_menu_callback, pattern="^refs_menu$"))
     app.add_handler(CallbackQueryHandler(comps_menu_callback, pattern="^comps_menu$"))
-    
-    app.add_handler(CallbackQueryHandler(withdraw_method_chosen, pattern="^wit_meth_"))
+    app.add_handler(dep_handler)
     app.add_handler(CallbackQueryHandler(deposit_method_chosen, pattern="^dep_meth_"))
 
     # Admin Panel Submenus
@@ -1628,7 +1627,6 @@ def main():
     # Add Conversations
     app.add_handler(acc_handler)
     app.add_handler(wit_handler)
-    app.add_handler(dep_handler)
     app.add_handler(site_dep_handler)
     app.add_handler(site_wit_handler)
     app.add_handler(gift_handler)
