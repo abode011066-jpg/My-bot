@@ -262,7 +262,7 @@ def init_db():
         "min_site_withdraw": "10000",
         "min_site_deposit": "5000",
         "maintenance_mode": "0",
-        "current_competition": "🏆 مسابقة الأسبوع: أكثر 3 أعضاء يحققون إحالات يحصلون على 50,000 ليرة!",
+        "current_competition": "🏆 مسابقة الأسبوع: أكثر 3 أعضاء يحققون إحالات نشطة يحصلون على كود هدية !",
         "wheel_prob_0": "40.0",
         "wheel_prob_5": "25.0",
         "wheel_prob_10": "15.0",
@@ -503,7 +503,7 @@ async def show_home_screen(message_obj, user_id, context):
     balance, wayx_acc, full_name = res[0], res[1], res[2]
     text = (
         f"أهلاً وسهلاً بك {full_name} في بوت\n"
-        f"**ROZ WAYXBET** 🚀\n\n"
+        f"**ROZ WAYXBET** 🌹🚀\n\n"
         f"💰 **رصيدك:** {format_currency(balance)}\n"
         f"🆔 **ايدي حسابك:** `{user_id}`\n"
         f"🌐 **رابط الموقع:** {SITE_URL}"
