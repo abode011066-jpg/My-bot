@@ -2,6 +2,10 @@ import logging
 import sqlite3
 import re
 import random
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -20,6 +24,22 @@ from telegram.ext import (
     filters,
     ConversationHandler,
 )
+
+# ----------------- خادم فحوصات الصحة لتفادي Timeout على Render -----------------
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot Service is Running Alive")
+    def log_message(self, format, *args):
+        pass
+
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_health_check_server, daemon=True).start()
 
 # ----------------- الإعدادات العامة -----------------
 TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"
@@ -132,6 +152,7 @@ def init_db():
         "min_deposit": "5000",
         "min_site_withdraw": "10000",
         "min_site_deposit": "5000",
+        "maintenance_mode": "0",
         "current_competition": "🏆 مسابقة الأسبوع: أكثر 3 أعضاء يحققون إحالات يحصلون على 50,000 ليرة!",
         "wheel_prob_0": "40.0",
         "wheel_prob_5": "25.0",
@@ -226,6 +247,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_banned(user.id):
         await update.message.reply_text("❌ عذراً، حسابك محظور من استخدام البوت.")
+        return ConversationHandler.END
+
+    if get_setting("maintenance_mode") == "1" and not is_admin(user.id):
+        await update.message.reply_text("🛠 **البوت حالياً في وضع الصيانة.**\nيرجى الانتظار لحين الانتهاء من الصيانة وتحديث الخدمات.")
         return ConversationHandler.END
 
     args = context.args
@@ -361,7 +386,7 @@ async def back_home_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.message.delete()
     await show_home_screen(query.message, query.from_user.id, context)
 
-# ----------------- 1. قسم حساب WayxBet -----------------
+# ----------------- 1. قسم حساب WayxBet (تخزين الحساب وكلمة المرور) -----------------
 async def wayxbet_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
@@ -369,13 +394,18 @@ async def wayxbet_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     conn = sqlite3.connect("wayxbet_vip_pro.db")
     c = conn.cursor()
-    c.execute("SELECT wayxbet_account FROM users WHERE user_id = ?", (user.id,))
+    c.execute("SELECT wayxbet_account, wayxbet_pass FROM users WHERE user_id = ?", (user.id,))
     res = c.fetchone()
     conn.close()
 
     if res and res[0]:
+        acc_user = res[0]
+        acc_pass = res[1] if res[1] else "غير مسجل"
         await query.edit_message_text(
-            f"✅ **حسابك المسجل في الموقع:**\n`{res[0]}`\n\n(اضغط على الاسم لنسخه)",
+            f"✅ **حسابك المسجل في الموقع:**\n\n"
+            f"👤 **اسم الحساب:** `{acc_user}`\n"
+            f"🔑 **كلمة المرور:** `{acc_pass}`\n\n"
+            f"(اضغط على النص لنسخه)",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="back_home")]])
         )
@@ -638,7 +668,6 @@ async def deposit_method_chosen(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown"
     )
     return DEPOSIT_TX
-
 async def deposit_tx_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['dep_tx'] = update.message.text.strip()
     min_d = float(get_setting("min_deposit") or 5000)
@@ -947,7 +976,9 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     await query.answer()
+    maint_status = "تفعيل وضع الصيانة 🛠" if get_setting("maintenance_mode") == "0" else "إلغاء وضع الصيانة 🟢"
     kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(maint_status, callback_data="toggle_setting_maintenance_mode")],
         [InlineKeyboardButton("⚙️ إعدادات البونصات والحدود", callback_data="adm_settings_menu")],
         [InlineKeyboardButton("🎡 خوارزمية نسب ربح العجلة", callback_data="adm_wheel_menu")],
         [InlineKeyboardButton("💳 تغيير حسابات الشحن (سيريتل/شام)", callback_data="adm_accounts_menu")],
@@ -961,7 +992,7 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     ])
     await query.edit_message_text("🛠 **لوحة الإدارة الشاملة والتحكم الكامل بالبوت:**", reply_markup=kb)
 
-# --- موافقات ورفض الطلبات متضمنة شرط إدخال اسم الأدمن ---
+# --- موافقات ورفض الطلبات وتخزين يوزر وباسورد العميل ---
 async def admin_request_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data.split("_")
@@ -1001,8 +1032,23 @@ async def admin_name_received(update: Update, context: ContextTypes.DEFAULT_TYPE
     if act == "app":
         c.execute("UPDATE requests SET status = 'approved', admin_name = ? WHERE id = ?", (admin_name, req_id))
         if req_type == "acc":
-            c.execute("UPDATE users SET wayxbet_account = ? WHERE user_id = ?", (extra_val, target_user_id))
-            await context.bot.send_message(target_user_id, f"✅ تمت الموافقة على إنشاء حسابك `{extra_val}` بواسطة الأدمن ({admin_name})! يمكنك الشحن الآن.")
+            c.execute("SELECT info FROM requests WHERE id = ?", (req_id,))
+            req_info = c.fetchone()
+            pass_val = ""
+            if req_info and req_info[0]:
+                try:
+                    pass_val = req_info[0].split("| باسورد: ")[1].split(" |")[0].strip()
+                except:
+                    pass_val = ""
+            c.execute("UPDATE users SET wayxbet_account = ?, wayxbet_pass = ? WHERE user_id = ?", (extra_val, pass_val, target_user_id))
+            await context.bot.send_message(
+                target_user_id, 
+                f"✅ تمت الموافقة على إنشاء حسابك بواسطة الأدمن ({admin_name})!\n\n"
+                f"👤 **اسم الحساب:** `{extra_val}`\n"
+                f"🔑 **كلمة المرور:** `{pass_val}`\n\n"
+                f"يمكنك الشحن والاستفادة من الخدمات الآن.",
+                parse_mode="Markdown"
+            )
         elif req_type == "wit":
             await context.bot.send_message(target_user_id, f"✅ تم تنفيذ طلب السحب الخاص بك بنجاح بواسطة الأدمن ({admin_name}).")
         elif req_type == "dep":
@@ -1068,15 +1114,17 @@ async def adm_wheel_prob_val_received(update: Update, context: ContextTypes.DEFA
         await update.message.reply_text("❌ قيمة غير صحيحة، أعد الإدخال.")
     return ConversationHandler.END
 
-# --- إعدادات البونص والحدود ---
+# --- إعدادات البونص والحدود والصيانة ---
 async def adm_settings_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     wb_active = "مفعل ✅" if get_setting("welcome_bonus_active") == "1" else "معطل ❌"
     db_active = "مفعل ✅" if get_setting("deposit_bonus_active") == "1" else "معطل ❌"
+    maint_active = "مفعل 🛠" if get_setting("maintenance_mode") == "1" else "معطل 🟢"
 
     kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"وضع الصيانة ({maint_active})", callback_data="toggle_setting_maintenance_mode")],
         [InlineKeyboardButton(f"البونص الترحيبي ({wb_active})", callback_data="toggle_setting_welcome_bonus_active"),
          InlineKeyboardButton("قيمة البونص الترحيبي", callback_data="set_setting_welcome_bonus")],
         [InlineKeyboardButton(f"بونص الشحن ({db_active})", callback_data="toggle_setting_deposit_bonus_active"),
@@ -1088,7 +1136,7 @@ async def adm_settings_menu_callback(update: Update, context: ContextTypes.DEFAU
         [InlineKeyboardButton("تغيير نسبة العملة (القديمة/الجديدة)", callback_data="set_setting_currency_ratio")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
     ])
-    await query.edit_message_text("⚙️ **إعدادات البونصات والحدود الأدنى:**", reply_markup=kb)
+    await query.edit_message_text("⚙️ **إعدادات البونصات والحدود الأدنى والصيانة:**", reply_markup=kb)
 
 async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1097,6 +1145,9 @@ async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_
     new_val = "0" if curr == "1" else "1"
     set_setting(key, new_val)
     await query.answer("✅ تم تغيير الحالة بنجاح!")
+    
+    if key == "maintenance_mode":
+        return await admin_panel_callback(update, context)
     return await adm_settings_menu_callback(update, context)
 
 async def set_setting_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1113,7 +1164,6 @@ async def set_setting_val_received(update: Update, context: ContextTypes.DEFAULT
     set_setting(key, val)
     await update.message.reply_text(f"✅ تم حفظ القيمة الجديدة لـ `{key}` بنجاح!", parse_mode="Markdown")
     return ConversationHandler.END
-
 async def adm_accounts_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1162,7 +1212,7 @@ async def adm_view_user_received(update: Update, context: ContextTypes.DEFAULT_T
 
     conn = sqlite3.connect("wayxbet_vip_pro.db")
     c = conn.cursor()
-    c.execute("SELECT full_name, phone, balance, wayxbet_account, banned, created_at FROM users WHERE user_id = ?", (int(user_id_str),))
+    c.execute("SELECT full_name, phone, balance, wayxbet_account, wayxbet_pass, banned, created_at FROM users WHERE user_id = ?", (int(user_id_str),))
     u = c.fetchone()
     conn.close()
 
@@ -1170,15 +1220,16 @@ async def adm_view_user_received(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ لم يتم العثور على هذا المستخدم في البوت.")
         return ConversationHandler.END
 
-    status = "محظور 🚫" if u[4] == 1 else "نشط ✅"
+    status = "محظور 🚫" if u[5] == 1 else "نشط ✅"
     text = (
         f"👤 **تفاصيل اللاعب (#{user_id_str}):**\n\n"
         f"▪️ الاسم: {u[0]}\n"
         f"▪️ الرقم: `{u[1]}`\n"
         f"▪️ الرصيد الحالي: {format_currency(u[2])}\n"
         f"▪️ حساب الموقع: `{u[3] or 'غير مسجل'}`\n"
+        f"▪️ كلمة المرور: `{u[4] or 'غير مسجل'}`\n"
         f"▪️ الحالة: {status}\n"
-        f"▪️ تاريخ الانضمام: {u[5]}"
+        f"▪️ تاريخ الانضمام: {u[6]}"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
     return ConversationHandler.END
