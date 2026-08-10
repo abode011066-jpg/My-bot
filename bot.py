@@ -150,7 +150,7 @@ threading.Thread(target=run_health_check_server, daemon=True).start()
 
 # ----------------- الإعدادات العامة -----------------
 TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"
-ADMIN_IDS = [7255100997, 8984953082]
+ADMIN_IDS = [8984953082]
 ADMIN_ID = ADMIN_IDS[0]
 CHANNEL_BOT = "@cashinsher"
 CHANNEL_PROG = "@lerafree"
