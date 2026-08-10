@@ -1,294 +1,92 @@
 import logging
 import sqlite3
-import threading
 import re
 import json
 import random
 import time
-from urllib.parse import parse_qs, urlparse
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     WebAppInfo,
 )
 from telegram.ext import (
-    Application,
+    ApplicationBuilder,
+    ContextTypes,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
-    ContextTypes,
     filters,
     ConversationHandler,
 )
 
-# ----------------- نظام الحماية ضد الرشق (Anti-Spam System) -----------------
-USER_LAST_ACTION = {}
-FLOOD_INTERVAL = 1.2  # الحد الأدنى بين الطلبات بالثواني
-
-def is_flooding(user_id: int) -> bool:
-    """التحقق مما إذا كان المستخدم يقوم بالرشق أو إرسال طلبات سريعة جداً"""
-    now = time.time()
-    last_time = USER_LAST_ACTION.get(user_id, 0)
-    if now - last_time < FLOOD_INTERVAL:
-        return True
-    USER_LAST_ACTION[user_id] = now
-    return False
-
-# ----------------- خادم الويب وعجلة الحظ لـ Render -----------------
-WHEEL_HTML = """<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🎡 عجلة الحظ VIP</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; text-align: center; background: #0f172a; color: white; padding: 20px; margin: 0; }
-    .card { background: #1e293b; border-radius: 16px; padding: 20px; max-width: 360px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-    canvas { border: 5px solid #fbbf24; border-radius: 50%; margin: 15px 0; background: #0f172a; }
-    button { padding: 14px 32px; font-size: 18px; font-weight: bold; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4); }
-    button:active { transform: scale(0.98); }
-    #result { margin-top: 15px; font-size: 18px; font-weight: bold; color: #4ade80; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>🎡 عجلة الحظ VIP</h2>
-    <p>جرب حظك الآن واحصل على مكافآت فورية!</p>
-    <canvas id="wheel" width="280" height="280"></canvas><br>
-    <button onclick="spin()">🎯 أدر العجلة</button>
-    <div id="result"></div>
-  </div>
-
-  <script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
-
-    const canvas = document.getElementById('wheel');
-    const ctx = canvas.getContext('2d');
-    const prizes = ['1,000 ليرة', 'حظ أوفر', '5,000 ليرة', 'لفة إضافية', '10,000 ليرة', '2,000 ليرة'];
-    const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
-    let startAngle = 0;
-    const arc = (2 * Math.PI) / prizes.length;
-    let isSpinning = false;
-
-    function drawWheel() {
-      ctx.clearRect(0, 0, 280, 280);
-      prizes.forEach((prize, i) => {
-        const angle = startAngle + i * arc;
-        ctx.fillStyle = colors[i];
-        ctx.beginPath();
-        ctx.arc(140, 140, 130, angle, angle + arc);
-        ctx.arc(140, 140, 0, angle + arc, angle, true);
-        ctx.fill();
-        ctx.save();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 14px Tahoma';
-        ctx.translate(140 + Math.cos(angle + arc/2) * 80, 140 + Math.sin(angle + arc/2) * 80);
-        ctx.rotate(angle + arc/2 + Math.PI/2);
-        ctx.fillText(prize, -ctx.measureText(prize).width / 2, 0);
-        ctx.restore();
-      });
-    }
-    drawWheel();
-
-    async function spin() {
-      if(isSpinning) return;
-      const userId = tg.initDataUnsafe?.user?.id;
-      if(!userId) {
-        document.getElementById('result').innerText = "❌ تعذر التعرّف على حسابك بفي التلجرام!";
-        return;
-      }
-
-      isSpinning = true;
-      document.getElementById('result').innerText = "جاري الاتصال بالسيرفر والتحقق...";
-
-      try {
-        const response = await fetch('/api/spin?user_id=' + userId);
-        const data = await response.json();
-
-        if(!data.success) {
-          document.getElementById('result').innerText = "❌ " + (data.error || "لا تملك لفات مجانية متاحة!");
-          isSpinning = false;
-          return;
-        }
-
-        const winningIndex = data.winning_index;
-        const wonPrize = data.prize_name;
-
-        let totalRounds = 5;
-        let targetAngle = (2 * Math.PI * totalRounds) + ((prizes.length - winningIndex - 0.5) * arc);
-        let currentRotation = 0;
-        let speed = 0.3;
-
-        let timer = setInterval(() => {
-          if (currentRotation >= targetAngle) {
-            clearInterval(timer);
-            isSpinning = false;
-            document.getElementById('result').innerText = "🎉 مبروك! حصلت على: " + wonPrize;
-            tg.sendData(JSON.stringify({ prize: wonPrize }));
-            return;
-          }
-          startAngle += speed;
-          currentRotation += speed;
-          if (targetAngle - currentRotation < Math.PI) {
-            speed = Math.max(0.01, speed * 0.95);
-          }
-          drawWheel();
-        }, 20);
-
-      } catch (err) {
-        document.getElementById('result').innerText = "❌ حدث خطأ أثناء الاتصال بالسيرفر.";
-        isSpinning = false;
-      }
-    }
-  </script>
-</body>
-</html>"""
-
-# ----------------- معالجة طلبات API للعجلة -----------------
-class WebServerHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path == "/api/spin":
-            params = parse_qs(parsed.query)
-            user_id = params.get("user_id", [None])[0]
-
-            self.send_response(200)
-            self.send_header("Content-type", "application/json; charset=utf-8")
-            self.end_headers()
-
-            if not user_id:
-                self.wfile.write(json.dumps({"success": False, "error": "المستخدم غير معرّف"}).encode("utf-8"))
-                return
-
-            conn = sqlite3.connect("wayxbet.db")
-            cursor = conn.cursor()
-            cursor.execute("SELECT spins FROM users WHERE user_id = ?", (user_id,))
-            res = cursor.fetchone()
-
-            if not res or res[0] <= 0:
-                conn.close()
-                self.wfile.write(json.dumps({"success": False, "error": "ليس لديك لفات مجانية متاحة!"}).encode("utf-8"))
-                return
-
-            cursor.execute("SELECT id, prize_name, weight, amount, prize_type FROM wheel_prizes ORDER BY id ASC")
-            prizes_data = cursor.fetchall()
-
-            if not prizes_data:
-                conn.close()
-                self.wfile.write(json.dumps({"success": False, "error": "لم يتم إعداد الجوائز بعد"}).encode("utf-8"))
-                return
-
-            weights = [p[2] for p in prizes_data]
-            chosen = random.choices(prizes_data, weights=weights, k=1)[0]
-            prize_id, prize_name, weight, amount, prize_type = chosen
-
-            winning_index = prize_id - 1
-
-            cursor.execute("UPDATE users SET spins = spins - 1 WHERE user_id = ?", (user_id,))
-            if prize_type == "balance" and amount > 0:
-                cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-            elif prize_type == "spin" and amount > 0:
-                cursor.execute("UPDATE users SET spins = spins + ? WHERE user_id = ?", (int(amount), user_id))
-
-            conn.commit()
-            conn.close()
-
-            resp = {
-                "success": True,
-                "winning_index": winning_index,
-                "prize_name": prize_name,
-                "amount": amount,
-                "type": prize_type
-            }
-            self.wfile.write(json.dumps(resp, ensure_ascii=False).encode("utf-8"))
-
-        elif "/wheel" in self.path or self.path == "/":
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(WHEEL_HTML.encode("utf-8"))
-        else:
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain; charset=utf-8")
-            self.end_headers()
-            self.wfile.write("Roz Wayxbet VIP Bot is active and running!".encode("utf-8"))
-
-def run_dummy_server():
-    try:
-        server_address = ("", 8080)
-        httpd = HTTPServer(server_address, WebServerHandler)
-        httpd.serve_forever()
-    except Exception as e:
-        print(f"Dummy server error: {e}")
-
-threading.Thread(target=run_dummy_server, daemon=True).start()
-
-# -------------------------------------------------------------
+# ----------------- الإعدادات العامة -----------------
+TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"
+ADMIN_ID = 7255100997
+CHANNEL_BOT = "@cashinsher"
+CHANNEL_PROG = "@lerafree"
+SITE_URL = "https://wayxbet10.com"
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"
-ADMIN_ID = 7255100997
-CHANNEL_PROGRAMMER = "@lerafree"
-SITE_URL = "https://wayxbet10.com"
-
-# حالات المحادثة
+# ----------------- حالات المحادثة (Conversation States) -----------------
 (
-    GET_CAPTCHA_QUESTION,
-    GET_CAPTCHA_PIN,
+    CAPTCHA_Q,
+    CAPTCHA_PIN,
     GET_CONTACT,
-    CREATE_ACCOUNT_NAME,
-    CREATE_ACCOUNT_PASS,
-    DEPOSIT_AMOUNT,
-    DEPOSIT_TX,
-    BOT_TO_SITE_AMOUNT,
-    WITHDRAW_AMOUNT,
+    ACC_NAME,
+    ACC_PASS,
+    WITHDRAW_METHOD,
     WITHDRAW_ACC,
-    GIFT_CODE_INPUT,
-    SUPPORT_MESSAGE,
-    ADMIN_BROADCAST,
-    ADMIN_SEND_PRIVATE_ID,
-    ADMIN_SEND_PRIVATE_MSG,
-    ADMIN_ADD_GIFT_CODE,
-    ADMIN_ADD_GIFT_AMT,
-    ADMIN_SET_SETTING_VAL,
-    ADMIN_ACTION_NAME,
-    ADMIN_REJECT_REASON,
-    ADMIN_REPLY_SUPPORT,
-    ADMIN_ADD_CHANNEL,
-    ADMIN_BAN_USER,
-    ADMIN_VIEW_USER_DETAILS,
-    ADMIN_ADD_ADMIN_ID,
-    ADMIN_EDIT_WHEEL_WEIGHT,
-    ADMIN_CHANGE_USER_BAL
-) = range(27)
+    WITHDRAW_AMT,
+    WITHDRAW_SPEED,
+    DEPOSIT_METHOD,
+    DEPOSIT_TX,
+    DEPOSIT_AMT,
+    SITE_DEP_AMT,
+    SITE_WIT_AMT,
+    GIFT_INPUT,
+    SUPPORT_INPUT,
+    ADMIN_REPLY,
+    ADMIN_INPUT_NAME,
+    ADMIN_BROADCAST_MSG,
+    ADMIN_PRIVATE_ID,
+    ADMIN_PRIVATE_MSG,
+    ADMIN_GIFT_CODE,
+    ADMIN_GIFT_AMT,
+    ADMIN_ADD_ADMIN,
+    ADMIN_ADD_BALANCE_ID,
+    ADMIN_ADD_BALANCE_AMT,
+    ADMIN_SUB_BALANCE_ID,
+    ADMIN_SUB_BALANCE_AMT,
+    ADMIN_BAN_ID,
+    ADMIN_UNBAN_ID,
+    ADMIN_VIEW_USER,
+    ADMIN_SETTING_VAL,
+    ADMIN_WHEEL_VAL
+) = range(33)
 
-# ----------------- إعداد قاعدة البيانات -----------------
+# ----------------- قاعدة البيانات -----------------
 def init_db():
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
-            phone TEXT,
             username TEXT,
+            full_name TEXT,
+            phone TEXT,
             balance REAL DEFAULT 0,
             spins INTEGER DEFAULT 0,
+            wayxbet_account TEXT,
+            wayxbet_pass TEXT,
             referred_by INTEGER,
             active_refs INTEGER DEFAULT 0,
-            wayxbet_user TEXT,
-            wayxbet_pass TEXT,
+            active_ops INTEGER DEFAULT 0,
             banned INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -304,7 +102,8 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS gift_codes (
             code TEXT PRIMARY KEY,
-            amount REAL
+            amount REAL,
+            used INTEGER DEFAULT 0
         )
     """)
     
@@ -341,6 +140,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             message TEXT,
+            file_id TEXT,
             status TEXT DEFAULT 'open',
             reply TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -348,8 +148,10 @@ def init_db():
     """)
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS forced_channels (
-            channel_username TEXT PRIMARY KEY
+        CREATE TABLE IF NOT EXISTS competitions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
@@ -373,23 +175,20 @@ def init_db():
         "syriatel_num": "0998682581",
         "sham_num": "d96338dabdb4da50e049526fa93b3353",
         "deposit_bonus": "10",
-        "ref_bonus_percent": "5",
-        "fast_withdraw_fee": "5",
-        "slow_withdraw_fee": "0",
-        "maintenance": "0",
-        "min_deposit": "5000",
-        "min_withdraw": "10000",
         "welcome_bonus": "1000",
         "welcome_bonus_active": "1",
+        "ref_spin_active": "1",
         "currency_ratio": "100",
-        "free_spin_on_ref": "1"
+        "min_withdraw": "10000",
+        "min_deposit": "5000",
+        "min_site_withdraw": "10000",
+        "min_site_deposit": "5000",
     }
     
     for k, v in defaults.items():
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
         
     cursor.execute("INSERT OR IGNORE INTO admins (admin_id) VALUES (?)", (ADMIN_ID,))
-    cursor.execute("INSERT OR IGNORE INTO forced_channels (channel_username) VALUES (?)", ("@cashinsher",))
     
     cursor.execute("SELECT COUNT(*) FROM wheel_prizes")
     if cursor.fetchone()[0] == 0:
@@ -408,9 +207,9 @@ def init_db():
 
 init_db()
 
-# ----------------- دوال معالجة قاعدة البيانات -----------------
+# ----------------- وظائف مساعدة -----------------
 def get_setting(key):
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
     res = cursor.fetchone()
@@ -418,14 +217,14 @@ def get_setting(key):
     return res[0] if res else ""
 
 def set_setting(key, value):
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
     cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
     conn.commit()
     conn.close()
 
 def is_admin(user_id):
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
     cursor.execute("SELECT admin_id FROM admins WHERE admin_id = ?", (user_id,))
     res = cursor.fetchone()
@@ -433,7 +232,7 @@ def is_admin(user_id):
     return res is not None
 
 def is_banned(user_id):
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
     cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
     res = cursor.fetchone()
@@ -444,806 +243,777 @@ def format_currency(amount):
     ratio = float(get_setting("currency_ratio") or 100)
     old_lira = float(amount)
     new_lira = old_lira / ratio
-    return f"{old_lira:,.0f} ليرة قديمة | {new_lira:,.2f} ليرة جديدة"
+    return f"{old_lira:,.0f} ليرة قديمة ({new_lira:,.2f} ليرة جديدة)"
 
-async def check_subscription(user_id, context: ContextTypes.DEFAULT_TYPE):
-    conn = sqlite3.connect("wayxbet.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT channel_username FROM forced_channels")
-    channels = [row[0] for row in cursor.fetchall()]
-    conn.close()
-
+async def check_subscription(user_id, context):
     try:
-        m_prog = await context.bot.get_chat_member(chat_id=CHANNEL_PROGRAMMER, user_id=user_id)
-        if m_prog.status in ['left', 'kicked']:
-            return False
+        for ch in [CHANNEL_BOT, CHANNEL_PROG]:
+            member = await context.bot.get_chat_member(chat_id=ch, user_id=user_id)
+            if member.status in ['left', 'kicked']:
+                return False
+        return True
     except:
         return False
 
-    for ch in channels:
-        try:
-            m = await context.bot.get_chat_member(chat_id=ch, user_id=user_id)
-            if m.status in ['left', 'kicked']:
-                return False
-        except:
-            return False
-    return True
+def main_menu_keyboard(is_user_admin=False):
+    keyboard = [
+        [KeyboardButton("WayxBet"), KeyboardButton("سحب رصيد"), KeyboardButton("شحن رصيد")],
+        [KeyboardButton("احالاتي"), KeyboardButton("عجلة الحظ 🎡"), KeyboardButton("المسابقات الحالية")],
+        [KeyboardButton("تواصل مع الدعم"), KeyboardButton("كود هدية")],
+        [KeyboardButton("شحن رصيد من البوت للموقع"), KeyboardButton("سحب رصيد من الموقع للبوت")]
+    ]
+    if is_user_admin:
+        keyboard.append([KeyboardButton("🛠 لوحة الإدارة")])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ----------------- نظام التسجيل والتحقق الفائق -----------------
+# ----------------- البداية والتحقق -----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    
-    if is_flooding(user.id):
-        return ConversationHandler.END
-
     if is_banned(user.id):
         await update.message.reply_text("❌ حسابك محظور من استخدام البوت.")
         return ConversationHandler.END
 
-    if get_setting("maintenance") == "1" and not is_admin(user.id):
-        await update.message.reply_text("🛠 البوت متوقف حالياً للصيانة الفنية. يرجى العودة لاحقاً.")
-        return ConversationHandler.END
-
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT phone FROM users WHERE user_id = ?", (user.id,))
-    user_data = cursor.fetchone()
-    
-    if not user_data or not user_data[0]:
+    cursor.execute("SELECT phone, wayxbet_account FROM users WHERE user_id = ?", (user.id,))
+    db_user = cursor.fetchone()
+
+    if not db_user or not db_user[0]:
         args = context.args
         ref_id = int(args[0]) if args and args[0].isdigit() and int(args[0]) != user.id else None
-        cursor.execute("INSERT OR IGNORE INTO users (user_id, username, referred_by) VALUES (?, ?, ?)", (user.id, user.username, ref_id))
+        cursor.execute("INSERT OR IGNORE INTO users (user_id, username, full_name, referred_by) VALUES (?, ?, ?, ?)", 
+                       (user.id, user.username, user.full_name, ref_id))
         
         if ref_id:
-            try:
-                ref_percent = float(get_setting("ref_bonus_percent") or 5)
-                spin_msg = ""
-                if get_setting("free_spin_on_ref") == "1":
-                    cursor.execute("UPDATE users SET spins = spins + 1 WHERE user_id = ?", (ref_id,))
-                    spin_msg = "\n🎁 تم منحك لفة عجلة مجانية إضافية!"
+            cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (ref_id,))
+            if cursor.fetchone():
+                if get_setting("ref_spin_active") == "1":
+                    cursor.execute("UPDATE users SET spins = spins + 1, active_refs = active_refs + 1 WHERE user_id = ?", (ref_id,))
+                try:
+                    await context.bot.send_message(
+                        chat_id=ref_id,
+                        text=f"🔔 انضم شخص جديد ({user.full_name}) عبر رابط إحالتك!\n🎁 تم منحك لفة عجلة مجانية."
+                    )
+                except:
+                    pass
 
-                await context.bot.send_message(
-                    chat_id=ref_id,
-                    text=f"🔔 قام المستخدم ({user.full_name}) بالدخول عبر رابط إحالتك!\nستحصل على نسبة {ref_percent}% من عملياته عند التفعيل.{spin_msg}"
-                )
-            except:
-                pass
+        # إشعار الأدمن بدخول شخص جديد
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"👤 دخول مستخدم جديد للبوت:\nالاسم: {user.full_name}\nالايدي: `{user.id}`",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
 
         conn.commit()
         conn.close()
-        
-        await update.message.reply_text("🛡 **نظام الأمان والتحقق الأول:**\n\nالرجاء إجابة السؤال الرياضي:\nكم يساوي الناتج: **7 + 4 = ?**")
-        return GET_CAPTCHA_QUESTION
-    
+
+        await update.message.reply_text("🛡 **نظام الأمان والتحقق:**\n\nكم يساوي الناتج: **5 + 5 = ?**", parse_mode="Markdown")
+        return CAPTCHA_Q
+
     conn.close()
-    return await check_and_show_main_menu(update, context)
+    return await show_main_menu(update, context)
 
-async def receive_captcha_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text.strip() == "11":
-        await update.message.reply_text("🔒 **اختبار الرقم السري الأمني:**\n\nيرجى كتابة الرقم السري التالي للتأكيد: `7788`", parse_mode="Markdown")
-        return GET_CAPTCHA_PIN
+async def captcha_question_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text.strip() == "10":
+        await update.message.reply_text("🔒 أرسل الرقم السري للتأكيد: `9988`", parse_mode="Markdown")
+        return CAPTCHA_PIN
     else:
-        await update.message.reply_text("❌ إجابة خاطئة! كم يساوي الناتج: 7 + 4 = ?")
-        return GET_CAPTCHA_QUESTION
+        await update.message.reply_text("❌ إجابة خاطئة! كم يساوي الناتج: 5 + 5 = ?")
+        return CAPTCHA_Q
 
-async def receive_captcha_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text.strip() == "7788":
-        # تصحيح الزر ليكون ReplyKeyboardMarkup لطلب جهة الاتصال بشكل صحيح وفق Telegram API
+async def captcha_pin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text.strip() == "9988":
         keyboard = ReplyKeyboardMarkup(
             [[KeyboardButton("📱 مشاركة رقم الهاتف السوري", request_contact=True)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
+            resize_keyboard=True, one_time_keyboard=True
         )
-        await update.message.reply_text(
-            "📱 أهلاً بك! يرجى مشاركة رقم هاتفك السوري لتأكيد الهوية ومنع الحسابات الوهمية عبر الضغط على الزر أدناه:",
-            reply_markup=keyboard
-        )
+        await update.message.reply_text("📱 يرجى مشاركة رقم هاتفك السوري لتأكيد الحساب:", reply_markup=keyboard)
         return GET_CONTACT
     else:
-        await update.message.reply_text("❌ رقم سري خاطئ! يرجى إدخال الرقم: `7788`", parse_mode="Markdown")
-        return GET_CAPTCHA_PIN
+        await update.message.reply_text("❌ رقم سري خاطئ! أرسل الرقم: `9988`", parse_mode="Markdown")
+        return CAPTCHA_PIN
 
-async def receive_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if not update.message.contact:
-        await update.message.reply_text("⚠️ يرجى استخدام الزر المخصص لمشاركة رقم الهاتف السفلي!")
-        return GET_CONTACT
-
-    # التحقق من أن رقم الهاتف المباشر ينتمي للمستخدم نفسه لعدم التزوير
-    if update.message.contact.user_id != user.id:
-        await update.message.reply_text("❌ يرجى مشاركة رقم هاتفك الشخصي الخاص بحسابك هذا فقط!")
+    if not update.message.contact or update.message.contact.user_id != user.id:
+        await update.message.reply_text("⚠️ يرجى استخدام الزر المخصص لمشاركة رقم هاتفك حصراً!")
         return GET_CONTACT
 
     phone = update.message.contact.phone_number.strip()
-    clean_phone = phone.replace("+", "").replace(" ", "")
-
-    # التحقق من أن الرقم سوري (+963 أو 09)
-    if not (clean_phone.startswith("9639") or clean_phone.startswith("09") or (clean_phone.startswith("9") and len(clean_phone) == 9)):
-        await update.message.reply_text("❌ يرجى مشاركة رقم هاتف سوري فعال (سيرياتيل أو ام تي ان) للبدء!")
-        return GET_CONTACT
-
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET phone = ? WHERE user_id = ?", (phone, user.id))
     
-    if get_setting("welcome_bonus_active") == "1":
-        w_bonus = float(get_setting("welcome_bonus") or 0)
-        if w_bonus > 0:
-            cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (w_bonus, user.id))
-            await update.message.reply_text(
-                f"🎁 **مبروك!** حصلت على بونص ترحيبي بمبلغ: {format_currency(w_bonus)}",
-                reply_markup=ReplyKeyboardRemove()
-            )
-
+    bonus_active = get_setting("welcome_bonus_active") == "1"
+    welcome_bonus = float(get_setting("welcome_bonus") or 0) if bonus_active else 0
+    
+    cursor.execute("UPDATE users SET phone = ?, balance = balance + ? WHERE user_id = ?", (phone, welcome_bonus, user.id))
     conn.commit()
     conn.close()
 
-    await update.message.reply_text("✅ تم التحقق من رقم الهاتف بنجاح!", reply_markup=ReplyKeyboardRemove())
-    return await check_and_show_main_menu(update, context)
+    await update.message.reply_text(f"✅ تم تأكيد رقم هاتفك بنجاح!\n🎁 تم إضافة بونص ترحيبي بقيمة: {format_currency(welcome_bonus)}")
+    return await show_main_menu(update, context)
 
-# ----------------- القائمة الرئيسية والتحقق من الاشتراكات -----------------
-async def check_and_show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user if update.message else update.callback_query.from_user
-    
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     if not await check_subscription(user.id, context):
-        conn = sqlite3.connect("wayxbet.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT channel_username FROM forced_channels")
-        channels = [row[0] for row in cursor.fetchall()]
-        conn.close()
-
-        keyboard = [[InlineKeyboardButton("📢 قناة المبرمج", url=f"https://t.me/{CHANNEL_PROGRAMMER[1:]}")]]
-        for idx, ch in enumerate(channels, 1):
-            ch_clean = ch[1:] if ch.startswith("@") else ch
-            keyboard.append([InlineKeyboardButton(f"📢 القناة الإجبارية #{idx}", url=f"https://t.me/{ch_clean}")])
-        keyboard.append([InlineKeyboardButton("✅ تم التحقق من الاشتراك", callback_data="check_sub")])
-
-        msg = "⚠️ **عليك الاشتراك في القنوات التالية أولاً لاستخدام البوت:**\n"
-        if update.message:
-            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
-        else:
-            await update.callback_query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(
+            f"❌ يجب عليك الاشتراك في قنوات البوت الإجبارية أولاً:\n1️⃣ {CHANNEL_BOT}\n2️⃣ {CHANNEL_PROG}\n\nثم اضغط /start من جديد."
+        )
         return ConversationHandler.END
 
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT balance, spins, wayxbet_user FROM users WHERE user_id = ?", (user.id,))
-    data = cursor.fetchone()
+    cursor.execute("SELECT balance, wayxbet_account FROM users WHERE user_id = ?", (user.id,))
+    res = cursor.fetchone()
     conn.close()
 
-    bal = data[0] if data else 0
-    spins = data[1] if data else 0
-    acc = data[2] if data and data[2] else "غير مرتبط"
+    balance = res[0] if res else 0
+    wayx_acc = res[1] if res and res[1] else "غير مسجل"
 
     text = (
-        f"🙋‍♂️ أهلاً بك عزيزي: **{user.full_name}**\n\n"
-        f"💵 **رصيدك الحالي:** {format_currency(bal)}\n"
-        f"🎡 **لفات العجلة:** {spins} لفة\n"
-        f"🆔 **حساب WayXbet:** `{acc}`\n\n"
-        f"اختر من القائمة أدناه الخدمة المطلوبة:"
+        f"أهلاً وسهلاً بك {user.full_name} في بوت ROZ WAYXBET\n\n"
+        f"💰 رصيدك: {format_currency(balance)}\n"
+        f"🆔 ايدي حسابك: `{user.id}`\n"
+        f"👤 حسابك في الموقع: `{wayx_acc}`"
     )
-
-    keyboard = [
-        [InlineKeyboardButton("🎮 إنشاء حساب WayXbet", callback_data="create_acc"), InlineKeyboardButton("💰 إيداع رصيد", callback_data="deposit")],
-        [InlineKeyboardButton("💸 سحب الأرباح", callback_data="withdraw"), InlineKeyboardButton("🔄 تحويل من البوت للموقع", callback_data="bot_to_site")],
-        [InlineKeyboardButton("🎡 عجلة الحظ VIP", callback_data="open_wheel"), InlineKeyboardButton("🎁 كود هدية", callback_data="gift_code")],
-        [InlineKeyboardButton("👥 نظام الإحالة", callback_data="referral"), InlineKeyboardButton("📊 حسابي الشخصي", callback_data="my_account")],
-        [InlineKeyboardButton("💬 الدعم الفني", callback_data="support")]
-    ]
-
-    if is_admin(user.id):
-        keyboard.append([InlineKeyboardButton("⚙️ لوحة الإدارة", callback_data="admin_panel")])
-
-    if update.message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-    else:
-        await update.callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-        
+    
+    # تحديث نص زر Wayxbet إذا كان مسجلاً
+    await update.message.reply_text(text, reply_markup=main_menu_keyboard(is_admin(user.id)), parse_mode="Markdown")
     return ConversationHandler.END
 
-async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if is_flooding(query.from_user.id):
-        return
-    if await check_subscription(query.from_user.id, context):
-        await query.message.delete()
-        await check_and_show_main_menu(update, context)
-    else:
-        await query.answer("❌ لم تقم بالاشتراك في جميع القنوات بعد!", show_alert=True)
+# ----------------- 1. قسم حساب WayxBet -----------------
+async def wayxbet_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    conn = sqlite3.connect("wayxbet_pro.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT wayxbet_account FROM users WHERE user_id = ?", (user.id,))
+    res = cursor.fetchone()
+    conn.close()
 
-# ----------------- المعالجات والخيارات الرئيسية -----------------
-async def main_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    user = query.from_user
-
-    if is_flooding(user.id):
-        await query.answer("⚠️ يرجى الانتظار قليلاً وعدم التكرار السريع!")
-        return
-
-    await query.answer()
-
-    if data == "main_menu":
-        await check_and_show_main_menu(update, context)
-    elif data == "my_account":
-        conn = sqlite3.connect("wayxbet.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT phone, balance, spins, wayxbet_user, created_at FROM users WHERE user_id = ?", (user.id,))
-        u = cursor.fetchone()
-        conn.close()
-        
-        msg = (
-            f"📊 **تفاصيل حسابك:**\n\n"
-            f"🆔 ID: `{user.id}`\n"
-            f"📱 الهاتف: `{u[0]}`\n"
-            f"💵 الرصيد: {format_currency(u[1])}\n"
-            f"🎡 اللفات: {u[2]}\n"
-            f"🎯 حساب الموقع: `{u[3] or 'غير مرتبط'}`\n"
-            f"📅 تاريخ الانضمام: {u[4]}"
-        )
-        keyboard = [[InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")]]
-        await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-    elif data == "referral":
-        bot_username = (await context.bot.get_me()).username
-        ref_link = f"https://t.me/{bot_username}?start={user.id}"
-        ref_percent = get_setting("ref_bonus_percent") or "5"
-        
-        conn = sqlite3.connect("wayxbet.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (user.id,))
-        ref_count = cursor.fetchone()[0]
-        conn.close()
-
-        msg = (
-            f"👥 **نظام الإحالة كسب المال:**\n\n"
-            f"شارك الرابط الخاص بك مع أصدقائك واحصل على {ref_percent}% من جميع إيداعاتهم مجاناً + لفة مجانية بـ عجلة الحظ!\n\n"
-            f"🔗 **رابط إحالتك:**\n`{ref_link}`\n\n"
-            f"📊 **عدد إحالاتك:** {ref_count} شخص"
-        )
-        keyboard = [[InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")]]
-        await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-    elif data == "open_wheel":
-        keyboard = [
-            [InlineKeyboardButton("🎡 دخول لـ عجلة الحظ VIP", web_app=WebAppInfo(url="https://wayxbet10.com/wheel"))],
-            [InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")]
-        ]
-        await query.message.edit_text(
-            "🎡 **عجلة الحظ VIP:**\n\nاضغط على الزر أدناه لفتح العجلة وتدويرها للحصول على جوائز مالية ورصيد مباشر!",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+    if res and res[0]:
+        await update.message.reply_text(
+            f"✅ حسابك في الموقع مسجل بالفعل:\n`{res[0]}`\n\n(يمكنك نسخه بالضغط عليه)",
             parse_mode="Markdown"
         )
+        return ConversationHandler.END
 
-# ----------------- مسار إنشاء حساب جديد -----------------
-async def start_create_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.edit_text("🎮 **إنشاء حساب WayXbet جديد:**\n\nيرجى كتابة الاسم أو اسم المستخدم المرغوب به:")
-    return CREATE_ACCOUNT_NAME
+    await update.message.reply_text(
+        "📌 **شروط إنشاء الحساب:**\n"
+        "- يجب أن يبدأ اسم الحساب بحرف كبير (Capital).\n"
+        "- يجب أن ينتهي بـ `@123`.\n"
+        "مثال: `Roz133@`\n\n"
+        "الرجاء إدخال اسم المستخدم المطلوب:",
+        parse_mode="Markdown"
+    )
+    return ACC_NAME
 
 async def receive_acc_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["acc_name"] = update.message.text.strip()
-    await update.message.reply_text("🔑 ممتاز! الآن اكتب كلمة المرور المرغوبة للحساب:")
-    return CREATE_ACCOUNT_PASS
+    name = update.message.text.strip()
+    if not re.match(r'^[A-Z][a-zA-Z0-9]*@123$', name):
+        await update.message.reply_text("❌ اسم الحساب لا يطابق الشروط! أعد المحاولة (مثال: Roz133@):")
+        return ACC_NAME
+    
+    context.user_data['req_acc_name'] = name
+    await update.message.reply_text("🔑 ممتاز. الآن أدخل كلمة المرور الخاصة بالحساب:")
+    return ACC_PASS
 
 async def receive_acc_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    acc_name = context.user_data.get("acc_name")
-    acc_pass = update.message.text.strip()
+    password = update.message.text.strip()
+    acc_name = context.user_data.get('req_acc_name')
 
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO account_requests (user_id, wayxbet_user, wayxbet_pass) VALUES (?, ?, ?)", (user.id, acc_name, acc_pass))
-    req_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-
-    await update.message.reply_text("✅ تم تقديم طلب إنشاء الحساب بنجاح! سيتم مراجعته وتفعيله من قبل الإدارة فوراً.")
-
-    # إشعار الأدمن
-    keyboard = [
-        [InlineKeyboardButton("✅ موافقة وتفعيل", callback_data=f"adm_acc_app_{req_id}"), InlineKeyboardButton("❌ رفض الطلب", callback_data=f"adm_acc_rej_{req_id}")]
-    ]
-    for admin_id in [ADMIN_ID]:
-        try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"🆕 **طلب إنشاء حساب جديد (#{req_id}):**\n\nالمستخدم: {user.full_name} (`{user.id}`)\nاسم الحساب: `{acc_name}`\nكلمة السر: `{acc_pass}`",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
-            )
-        except:
-            pass
-
-    return ConversationHandler.END
-
-# ----------------- مسار الإيداع -----------------
-async def start_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    syriatel = get_setting("syriatel_num")
-    sham = get_setting("sham_num")
-    min_dep = get_setting("min_deposit") or "5000"
-
-    msg = (
-        f"💰 **عملية إيداع رصيد جديد:**\n\n"
-        f"📱 **سيرياتيل كاش:** `{syriatel}`\n"
-        f"🌐 **شام كاش:** `{sham}`\n\n"
-        f"⚠️ الحد الأدنى للإيداع: {format_currency(min_dep)}\n\n"
-        f"يرجى كتابة المبلغ الذي قمت بتحويله بالليرة السورية القديمة:"
-    )
-    await query.message.edit_text(msg, parse_mode="Markdown")
-    return DEPOSIT_AMOUNT
-
-async def receive_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if not text.isdigit():
-        await update.message.reply_text("❌ يرجى إدخال مبلغ صحيح بالأرقام فقط!")
-        return DEPOSIT_AMOUNT
+    cursor.execute("SELECT phone FROM users WHERE user_id = ?", (user.id,))
+    phone = cursor.fetchone()[0]
     
-    amount = float(text)
-    min_dep = float(get_setting("min_deposit") or 5000)
-    if amount < min_dep:
-        await update.message.reply_text(f"❌ المبلغ أقل من الحد الأدنى للإيداع ({format_currency(min_dep)})!")
-        return DEPOSIT_AMOUNT
-
-    context.user_data["dep_amount"] = amount
-    await update.message.reply_text("📄 ممتاز! الآن يرجى إرسال **رقم العملية (رقم الإشعار / ID Transaction)**:")
-    return DEPOSIT_TX
-
-async def receive_deposit_tx(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    amount = context.user_data.get("dep_amount")
-    tx_id = update.message.text.strip()
-
-    conn = sqlite3.connect("wayxbet.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO transactions (user_id, type, method, amount, tx_id) VALUES (?, 'deposit', 'Syriatel/Sham', ?, ?)", (user.id, amount, tx_id))
-    tx_db_id = cursor.lastrowid
+    cursor.execute("INSERT INTO account_requests (user_id, wayxbet_user, wayxbet_pass) VALUES (?, ?, ?)",
+                   (user.id, acc_name, password))
     conn.commit()
+    req_id = cursor.lastrowid
     conn.close()
 
-    await update.message.reply_text("✅ تم إرسال طلب الإيداع للإدارة للتحقق! سيتم إضافة الرصيد إلى حسابك فور التأكيد.")
+    # إرسال الطلب للأدمن
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"📥 **طلب إنشاء حساب جديد (#{req_id})**\n\n"
+             f"👤 المستخدم: {user.full_name}\n"
+             f"🆔 الايدي: `{user.id}`\n"
+             f"📱 الهاتف: `{phone}`\n"
+             f"🏷 اسم الحساب: `{acc_name}`\n"
+             f"🔑 كلمة المرور: `{password}`",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ موافقة", callback_data=f"app_acc_{req_id}"),
+             InlineKeyboardButton("❌ رفض", callback_data=f"rej_acc_{req_id}")]
+        ])
+    )
 
-    keyboard = [
-        [InlineKeyboardButton("✅ تأكيد وموافقة", callback_data=f"adm_dep_app_{tx_db_id}"), InlineKeyboardButton("❌ رفض الإيداع", callback_data=f"adm_dep_rej_{tx_db_id}")]
-    ]
-    for admin_id in [ADMIN_ID]:
-        try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"💳 **طلب إيداع جديد (#{tx_db_id}):**\n\nالمستخدم: {user.full_name} (`{user.id}`)\nالمبلغ: {format_currency(amount)}\nرقم العملية: `{tx_id}`",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
-            )
-        except:
-            pass
-
+    await update.message.reply_text("⏳ تم وصول طلبك للإدارة، انتظر قليلاً ليتم مراجعته وتفعيله.")
     return ConversationHandler.END
 
-# ----------------- مسار سحب الأرباح -----------------
-async def start_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# ----------------- 2. سحب رصيد -----------------
+async def withdraw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[KeyboardButton("سيريتل كاش"), KeyboardButton("شام كاش")], [KeyboardButton("إلغاء ❌")]]
+    await update.message.reply_text("💳 اختر طريقة السحب:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return WITHDRAW_METHOD
 
-    user = query.from_user
-    conn = sqlite3.connect("wayxbet.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,))
-    bal = cursor.fetchone()[0]
-    conn.close()
+async def withdraw_method_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "إلغاء ❌":
+        return await show_main_menu(update, context)
+    if text not in ["سيريتل كاش", "شام كاش"]:
+        await update.message.reply_text("⚠️ اختر من الأزرار الموجودة أدناه:")
+        return WITHDRAW_METHOD
 
-    min_w = float(get_setting("min_withdraw") or 10000)
-
-    if bal < min_w:
-        await query.message.edit_text(f"❌ رصيدك الحالي ({format_currency(bal)}) أقل من الحد الأدنى للسحب ({format_currency(min_w)}).")
-        return ConversationHandler.END
-
-    await query.message.edit_text(f"💸 **سحب الأرباح:**\n\nرصيدك المتاح: {format_currency(bal)}\nأدخل المبلغ المراد سحبه بالليرة القديمة:")
-    return WITHDRAW_AMOUNT
-
-async def receive_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if not text.isdigit():
-        await update.message.reply_text("❌ يرجى إدخال مبلغ صحيح!")
-        return WITHDRAW_AMOUNT
-
-    amount = float(text)
-    user = update.effective_user
-
-    conn = sqlite3.connect("wayxbet.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user.id,))
-    bal = cursor.fetchone()[0]
-    conn.close()
-
-    if amount > bal:
-        await update.message.reply_text("❌ المبلغ المطلوبة أكبر من رصيدك المتاح!")
-        return WITHDRAW_AMOUNT
-
-    context.user_data["w_amount"] = amount
-    await update.message.reply_text("📱 أدخل رقم الهاتف أو المحفظة المراد استلام الرصيد عليها:")
+    context.user_data['wit_method'] = text
+    await update.message.reply_text("📌 أرسل رقم الحساب أو المحفظة المراد السحب إليها:")
     return WITHDRAW_ACC
 
-async def receive_withdraw_acc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    amount = context.user_data.get("w_amount")
-    acc_num = update.message.text.strip()
+async def withdraw_acc_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['wit_acc'] = update.message.text.strip()
+    min_w = float(get_setting("min_withdraw") or 10000)
+    await update.message.reply_text(f"💵 أدخل المبلغ المراد سحبه (الحد الأدنى {min_w:,.0f} ليرة):")
+    return WITHDRAW_AMT
 
-    conn = sqlite3.connect("wayxbet.db")
+async def withdraw_amt_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        amount = float(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال رقم صحيح:")
+        return WITHDRAW_AMT
+
+    min_w = float(get_setting("min_withdraw") or 10000)
+    if amount < min_w:
+        await update.message.reply_text(f"❌ المبلغ أقل من الحد الأدنى للسحب ({min_w:,.0f}). أعد الإدخال:")
+        return WITHDRAW_AMT
+
+    context.user_data['wit_amt'] = amount
+    keyboard = [[KeyboardButton("طلب سريع (عمولة 5%)"), KeyboardButton("طلب بطيء (عمولة 0%)")], [KeyboardButton("إلغاء ❌")]]
+    await update.message.reply_text("⚡ اختر نوع الطلب:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return WITHDRAW_SPEED
+
+async def withdraw_speed_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    text = update.message.text
+    if text == "إلغاء ❌":
+        return await show_main_menu(update, context)
+    
+    is_fast = "سريع" in text
+    fee_percent = 5.0 if is_fast else 0.0
+    amount = context.user_data['wit_amt']
+    fee = amount * (fee_percent / 100)
+    net_amount = amount - fee
+
+    context.user_data['wit_fee'] = fee
+    context.user_data['wit_net'] = net_amount
+    context.user_data['wit_type_speed'] = "سريع (5%)" if is_fast else "بطيء (0%)"
+
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    # خصم الرصيد بصفة معلقة
-    cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user.id))
-    cursor.execute("INSERT INTO transactions (user_id, type, method, amount, account_num) VALUES (?, 'withdraw', 'Transfer', ?, ?)", (user.id, amount, acc_num))
-    tx_db_id = cursor.lastrowid
-    conn.commit()
+    cursor.execute("SELECT wayxbet_account, balance FROM users WHERE user_id = ?", (user.id,))
+    res = cursor.fetchone()
     conn.close()
 
-    await update.message.reply_text("✅ تم تقديم طلب السحب بنجاح وخصم الرصيد مؤقتاً لحين التنفيذ!")
+    wayx_acc = res[0] if res and res[0] else "غير مسجل"
+    balance = res[1] if res else 0
 
-    keyboard = [
-        [InlineKeyboardButton("✅ موافقة وتحويل", callback_data=f"adm_w_app_{tx_db_id}"), InlineKeyboardButton("❌ رفض وإعادة", callback_data=f"adm_w_rej_{tx_db_id}")]
-    ]
-    for admin_id in [ADMIN_ID]:
-        try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"💸 **طلب سحب جديد (#{tx_db_id}):**\n\nالمستخدم: {user.full_name} (`{user.id}`)\nالمبلغ: {format_currency(amount)}\nالحساب/المحفظة: `{acc_num}`",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
-            )
-        except:
-            pass
+    if balance < amount:
+        await update.message.reply_text("❌ رصيدك غير كافي لإتمام هذا السحب!")
+        return await show_main_menu(update, context)
 
+    summary = (
+        f"📋 **تفاصيل طلب السحب:**\n"
+        f"🏷 حساب الموقع: `{wayx_acc}`\n"
+        f"💳 الطريقة: {context.user_data['wit_method']}\n"
+        f"🔢 رقم الحساب: `{context.user_data['wit_acc']}`\n"
+        f"💰 المبلغ المطلوب: {format_currency(amount)}\n"
+        f"⚡ نوع الطلب: {context.user_data['wit_type_speed']}\n"
+        f"📉 العمولة: {format_currency(fee)}\n"
+        f"💵 المبلغ الصافي بعد الخصم: {format_currency(net_amount)}"
+    )
+
+    keyboard = [[KeyboardButton("تأكيد السحب ✅"), KeyboardButton("إلغاء ❌")]]
+    await update.message.reply_text(summary, parse_mode="Markdown", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return WITHDRAW_AMT # ننتظر تأكيد نهائي
+
+# ----------------- 3. شحن رصيد -----------------
+async def deposit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[KeyboardButton("سيريتل كاش"), KeyboardButton("شام كاش")], [KeyboardButton("إلغاء ❌")]]
+    await update.message.reply_text("💳 اختر طريقة الشحن:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return DEPOSIT_METHOD
+
+async def deposit_method_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "إلغاء ❌":
+        return await show_main_menu(update, context)
+    if text not in ["سيريتل كاش", "شام كاش"]:
+        await update.message.reply_text("⚠️ اختر من الأزرار المتاحة:")
+        return DEPOSIT_METHOD
+
+    context.user_data['dep_method'] = text
+    acc_num = get_setting("syriatel_num") if text == "سيريتل كاش" else get_setting("sham_num")
+
+    await update.message.reply_text(
+        f"📌 أرسل الرصيد إلى الحساب التالي:\n`{acc_num}`\n\n"
+        f"بعد إتمام التحويل، أرسل **رقم العملية (Transaction ID)**:",
+        parse_mode="Markdown"
+    )
+    return DEPOSIT_TX
+
+async def deposit_tx_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['dep_tx'] = update.message.text.strip()
+    min_d = float(get_setting("min_deposit") or 5000)
+    await update.message.reply_text(f"💵 أدخل المبلغ الذي قامت بتحويله (الحد الأدنى {min_d:,.0f} ليرة):")
+    return DEPOSIT_AMT
+
+async def deposit_amt_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    try:
+        amount = float(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال رقم صحيح:")
+        return DEPOSIT_AMT
+
+    min_d = float(get_setting("min_deposit") or 5000)
+    if amount < min_d:
+        await update.message.reply_text(f"❌ المبلغ أقل من الحد الأدنى للشحن ({min_d:,.0f}). أعد الإدخال:")
+        return DEPOSIT_AMT
+
+    conn = sqlite3.connect("wayxbet_pro.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT wayxbet_account FROM users WHERE user_id = ?", (user.id,))
+    res = cursor.fetchone()
+    wayx_acc = res[0] if res and res[0] else "غير مسجل"
+
+    cursor.execute("""
+        INSERT INTO transactions (user_id, type, method, amount, tx_id, account_num)
+        VALUES (?, 'deposit', ?, ?, ?, ?)
+    """, (user.id, context.user_data['dep_method'], amount, context.user_data['dep_tx'], wayx_acc))
+    conn.commit()
+    tx_id_db = cursor.lastrowid
+    conn.close()
+
+    # إرسال الطلب للأدمن
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"📥 **طلب شحن رصيد جديد (#{tx_id_db})**\n\n"
+             f"👤 المستخدم: {user.full_name}\n"
+             f"🆔 الايدي: `{user.id}`\n"
+             f"🏷 حساب الموقع: `{wayx_acc}`\n"
+             f"💳 الطريقة: {context.user_data['dep_method']}\n"
+             f"🔢 رقم العملية: `{context.user_data['dep_tx']}`\n"
+             f"💰 المبلغ: {format_currency(amount)}",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ موافقة", callback_data=f"app_dep_{tx_id_db}"),
+             InlineKeyboardButton("❌ رفض", callback_data=f"rej_dep_{tx_id_db}")]
+        ])
+    )
+
+    await update.message.reply_text("✅ تم استلام طلبك وهو قيد المراجعة من قبل الإدارة.", reply_markup=main_menu_keyboard(is_admin(user.id)))
     return ConversationHandler.END
 
-# ----------------- تحويل من البوت إلى الموقع -----------------
-async def start_bot_to_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = query.from_user
-    conn = sqlite3.connect("wayxbet.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT balance, wayxbet_user FROM users WHERE user_id = ?", (user.id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row or not row[1]:
-        await query.message.edit_text("❌ لم تقم بإنشاء أو ربط حساب WayXbet بعد! أنشئ حسابك أولاً.")
-        return ConversationHandler.END
-
-    await query.message.edit_text(f"🔄 **تحويل الرصيد إلى الموقع:**\n\nرصيدك بـ البوت: {format_currency(row[0])}\nحسابك بالموقع: `{row[1]}`\n\nأدخل المبلغ المراد تحويله:")
-    return BOT_TO_SITE_AMOUNT
-
-async def receive_bot_to_site_amt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if not text.isdigit():
-        await update.message.reply_text("❌ أدخل رقم صحيح!")
-        return BOT_TO_SITE_AMOUNT
-
-    amount = float(text)
+# ----------------- 4. إحالاتي وعجلة الحظ -----------------
+async def referrals_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT balance, wayxbet_user FROM users WHERE user_id = ?", (user.id,))
-    row = cursor.fetchone()
-
-    if amount > row[0]:
-        conn.close()
-        await update.message.reply_text("❌ رصيدك غير كافي!")
-        return BOT_TO_SITE_AMOUNT
-
-    cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user.id))
-    cursor.execute("INSERT INTO transactions (user_id, type, method, amount, account_num) VALUES (?, 'bot_to_site', 'SiteTransfer', ?, ?)", (user.id, amount, row[1]))
-    tx_id = cursor.lastrowid
-    conn.commit()
+    cursor.execute("SELECT active_refs, active_ops, spins FROM users WHERE user_id = ?", (user.id,))
+    res = cursor.fetchone()
     conn.close()
 
-    await update.message.reply_text("✅ تم طلب تحويل الرصيد لحسابك بـ الموقع بنجاح!")
+    active_refs = res[0] if res else 0
+    active_ops = res[1] if res else 0
+    spins = res[2] if res else 0
+    bot_username = (await context.bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start={user.id}"
 
-    keyboard = [
-        [InlineKeyboardButton("✅ تم الشحن بالموقع", callback_data=f"adm_b2s_app_{tx_id}"), InlineKeyboardButton("❌ رفض", callback_data=f"adm_b2s_rej_{tx_id}")]
-    ]
-    for admin_id in [ADMIN_ID]:
-        try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"🔄 **طلب تحويل للموقع (#{tx_id}):**\n\nالمستخدم: {user.full_name} (`{user.id}`)\nحساب الموقع: `{row[1]}`\nالمبلغ: {format_currency(amount)}",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
-            )
-        except:
-            pass
+    await update.message.reply_text(
+        f"👥 **نظام الإحالات والأرباح:**\n\n"
+        f"🔗 رابط إحالتك:\n`{ref_link}`\n\n"
+        f"📊 عدد الإحالات: {active_refs}\n"
+        f"🔥 عدد الإحالات النشطة: {active_ops}\n"
+        f"🎡 لفات عجلة الحظ المتاحة: {spins}\n\n"
+        f"💡 تحصل على لفة عجلة مجانية لكل إحالة، وعلى عمولة عند اكتمال العمليات النشطة!",
+        parse_mode="Markdown"
+    )
 
+# كود عجلة الحظ (WebApp)
+WHEEL_HTML = """<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎡 عجلة الحظ VIP</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; text-align: center; background: #0f172a; color: white; padding: 20px; margin: 0; }
+    .card { background: #1e293b; border-radius: 16px; padding: 20px; max-width: 360px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    canvas { border: 5px solid #fbbf24; border-radius: 50%; margin: 15px 0; background: #0f172a; }
+    button { padding: 14px 32px; font-size: 18px; font-weight: bold; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 12px; cursor: pointer; }
+    #result { margin-top: 15px; font-size: 18px; font-weight: bold; color: #4ade80; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🎡 عجلة الحظ VIP</h2>
+    <p>جرب حظك الآن واحصل على مكافآت فورية!</p>
+    <canvas id="wheel" width="280" height="280"></canvas><br>
+    <button onclick="spin()">🎯 أدر العجلة</button>
+    <div id="result"></div>
+  </div>
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready(); tg.expand();
+    function spin() {
+      const userId = tg.initDataUnsafe?.user?.id;
+      if(!userId) { document.getElementById('result').innerText = "❌ تعذر تحديد المستخدم!"; return; }
+      document.getElementById('result').innerText = "🎉 مبروك! تم تفعيل اللفة.";
+      setTimeout(() => { tg.close(); }, 1500);
+    }
+  </script>
+</body>
+</html>"""
+
+async def lucky_wheel_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[InlineKeyboardButton("🎯 فتح عجلة الحظ", web_app=WebAppInfo(url=SITE_URL + "/wheel"))]]
+    await update.message.reply_text("🎡 اضغط على الزر أدناه لفتح عجلة الحظ العشوائية:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+# ----------------- 5. المسابقات، الدعم، الأكواد -----------------
+async def current_competitions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = sqlite3.connect("wayxbet_pro.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT text, created_at FROM competitions ORDER BY id DESC LIMIT 5")
+    comps = cursor.fetchall()
+    conn.close()
+
+    if not comps:
+        await update.message.reply_text("📭 لا توجد مسابقات حالية نشطة.")
+        return
+
+    text = "🏆 **المسابقات والفعاليات الحالية:**\n\n"
+    for c in comps:
+        text += f"🔹 {c[0]}\n📅 التاريخ: {c[1]}\n-------------------\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+async def support_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("💬 أرسل استفسارك أو صورتك وسيتم تحويلها للدعم فوراً:")
+    return SUPPORT_INPUT
+
+async def support_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg_text = update.message.text or update.message.caption or ""
+    file_id = update.message.photo[-1].file_id if update.message.photo else None
+
+    conn = sqlite3.connect("wayxbet_pro.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO support_tickets (user_id, message, file_id) VALUES (?, ?, ?)",
+                   (user.id, msg_text, file_id))
+    conn.commit()
+    ticket_id = cursor.lastrowid
+    conn.close()
+
+    if file_id:
+        await context.bot.send_photo(chat_id=ADMIN_ID, photo=file_id, caption=f"💬 **تذكرة دعم فني جديدة (#{ticket_id})**\nمن: {user.full_name} (`{user.id}`)\nالرسالة: {msg_text}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رد على المستخدم", callback_data=f"sup_rep_{user.id}")]]))
+    else:
+        await context.bot.send_message(chat_id=ADMIN_ID, text=f"💬 **تذكرة دعم فني جديدة (#{ticket_id})**\nمن: {user.full_name} (`{user.id}`)\nالرسالة: {msg_text}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رد على المستخدم", callback_data=f"sup_rep_{user.id}")]]))
+
+    await update.message.reply_text("✅ تم إرسال رسالتك لدعم العملاء بنجاح، سيتم الرد عليك قريباً.")
     return ConversationHandler.END
 
-# ----------------- كود الهدية والدعم الفني -----------------
-async def start_gift_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.edit_text("🎁 **استخدام كود هدية:**\n\nيرجى إدخال الكود الخاص بك الآن:")
-    return GIFT_CODE_INPUT
+async def gift_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎁 أدخل كود الهدية للحصول على رصيدك:")
+    return GIFT_INPUT
 
-async def receive_gift_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    code_text = update.message.text.strip()
+async def gift_code_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    code = update.message.text.strip()
 
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT amount FROM gift_codes WHERE code = ?", (code_text,))
+    cursor.execute("SELECT amount, used FROM gift_codes WHERE code = ?", (code,))
     res = cursor.fetchone()
 
-    if res:
-        amt = res[0]
-        cursor.execute("DELETE FROM gift_codes WHERE code = ?", (code_text,))
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amt, user.id))
-        conn.commit()
+    if not res or res[1] == 1:
         conn.close()
-        await update.message.reply_text(f"🎉 **مبروك!** تم تفعيل الكود بنجاح وإضافة {format_currency(amt)} لـ رصيدك!")
-    else:
-        conn.close()
-        await update.message.reply_text("❌ هذا الكود غير صحيح أو تم استخدامه سابقاً!")
+        await update.message.reply_text("❌ الكود غير صالح أو تم استخدامه مسبقاً!")
+        return ConversationHandler.END
 
-    return ConversationHandler.END
-
-async def start_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.edit_text("💬 **الدعم الفني:**\n\nاكتب رسالتك وسنقوم بالرد عليك في أقرب وقت:")
-    return SUPPORT_MESSAGE
-
-async def receive_support_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    msg = update.message.text
-
-    conn = sqlite3.connect("wayxbet.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO support_tickets (user_id, message) VALUES (?, ?)", (user.id, msg))
-    tkt_id = cursor.lastrowid
+    amount = res[0]
+    cursor.execute("UPDATE gift_codes SET used = 1 WHERE code = ?", (code,))
+    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user.id))
     conn.commit()
     conn.close()
 
-    await update.message.reply_text("✅ تم إرسال رسالتك إلى فريق الدعم الفني بنجاح!")
+    # إشعار الأدمن بمن استخدم الكود
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"🎁 **استخدام كود هدية:**\n👤 المستخدم: {user.full_name} (`{user.id}`)\n🏷 الكود: `{code}`\n💰 القيمة: {format_currency(amount)}",
+            parse_mode="Markdown"
+        )
+    except:
+        pass
 
-    keyboard = [[InlineKeyboardButton("💬 رد على الرسالة", callback_data=f"adm_sup_reply_{tkt_id}")]]
-    for admin_id in [ADMIN_ID]:
-        try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"📩 **رسالة دعم جديدة (#{tkt_id}):**\n\nمن: {user.full_name} (`{user.id}`)\nالرسالة:\n{msg}",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
-            )
-        except:
-            pass
-
+    await update.message.reply_text(f"🎉 مبروك! تم شحن رصيدك بقيمة: {format_currency(amount)}")
     return ConversationHandler.END
 
-# ----------------- لوحة تحكم الأدمن الكاملة -----------------
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user = query.from_user
+# ----------------- الموقع (شحن وسحب) -----------------
+async def site_deposit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    min_sd = float(get_setting("min_site_deposit") or 5000)
+    await update.message.reply_text(f"🌐 أدخل الرصيد المراد شحنه من البوت إلى الموقع (الحد الأدنى {min_sd:,.0f}):")
+    return SITE_DEP_AMT
 
-    if not is_admin(user.id):
-        return
+async def site_deposit_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    try:
+        amount = float(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("❌ أدخل رقماً صحيحاً:")
+        return SITE_DEP_AMT
 
-    await query.answer()
-
-    conn = sqlite3.connect("wayxbet.db")
+    conn = sqlite3.connect("wayxbet_pro.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users")
-    total_users = cursor.fetchone()[0]
-    cursor.execute("SELECT SUM(balance) FROM users")
-    total_bal = cursor.fetchone()[0] or 0
+    cursor.execute("SELECT wayxbet_account, balance FROM users WHERE user_id = ?", (user.id,))
+    res = cursor.fetchone()
+    
+    if not res or not res[0]:
+        conn.close()
+        await update.message.reply_text("❌ يجب عليك إنشاء حساب في الموقع أولاً عبر زر (WayxBet).")
+        return ConversationHandler.END
+
+    wayx_acc, balance = res[0], res[1]
+    if balance < amount:
+        conn.close()
+        await update.message.reply_text("❌ رصيدك في البوت لا يكفي!")
+        return ConversationHandler.END
+
+    cursor.execute("INSERT INTO transactions (user_id, type, method, amount, account_num) VALUES (?, 'site_deposit', 'bot_to_site', ?, ?)",
+                   (user.id, amount, wayx_acc))
+    conn.commit()
+    tx_id = cursor.lastrowid
     conn.close()
 
-    text = (
-        f"⚙️ **لوحة التحكم العليا للإدارة VIP:**\n\n"
-        f"👥 إجمالي المستخدمين: {total_users}\n"
-        f"💰 إجمالي الأرصدة: {format_currency(total_bal)}\n\n"
-        f"اختر الإجراء المطلوب من الأسفل:"
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"🌐 **طلب شحن للموقع (#{tx_id})**\n👤 المستخدم: {user.full_name} (`{user.id}`)\n🏷 الحساب: `{wayx_acc}`\n💰 المبلغ: {format_currency(amount)}",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ موافقة", callback_data=f"app_sdep_{tx_id}"),
+             InlineKeyboardButton("❌ رفض", callback_data=f"rej_sdep_{tx_id}")]
+        ])
     )
 
-    keyboard = [
-        [InlineKeyboardButton("📢 إذاعة عامة", callback_data="adm_broadcast"), InlineKeyboardButton("✉️ رسالة خاصة", callback_data="adm_private")],
-        [InlineKeyboardButton("➕ إنشاء كود هدية", callback_data="adm_add_gift"), InlineKeyboardButton("🚫 حظر / إلغاء حظر", callback_data="adm_ban")],
-        [InlineKeyboardButton("📢 القنوات الإجبارية", callback_data="adm_channels"), InlineKeyboardButton("⚙️ إعدادات البوت", callback_data="adm_settings")],
-        [InlineKeyboardButton("🎡 وزن جوائز العجلة", callback_data="adm_wheel"), InlineKeyboardButton("💵 تعديل رصيد مستخدم", callback_data="adm_chg_bal")],
-        [InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")]
-    ]
+    await update.message.reply_text("✅ تم إرسال طلب الشحن للموقع للإدارة بنجاح.")
+    return ConversationHandler.END
 
-    await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+async def site_withdraw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    min_sw = float(get_setting("min_site_withdraw") or 10000)
+    await update.message.reply_text(f"🌐 أدخل المبلغ المراد سحبه من الموقع إلى البوت (الحد الأدنى {min_sw:,.0f}):")
+    return SITE_WIT_AMT
 
-async def admin_callback_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    user = query.from_user
+async def site_withdraw_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    try:
+        amount = float(update.message.text.strip())
+    except ValueError:
+        await update.message.reply_text("❌ أدخل رقماً صحيحاً:")
+        return SITE_WIT_AMT
 
+    conn = sqlite3.connect("wayxbet_pro.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT wayxbet_account FROM users WHERE user_id = ?", (user.id,))
+    res = cursor.fetchone()
+    
+    if not res or not res[0]:
+        conn.close()
+        await update.message.reply_text("❌ يجب عليك إنشاء حساب في الموقع أولاً.")
+        return ConversationHandler.END
+
+    wayx_acc = res[0]
+    cursor.execute("INSERT INTO transactions (user_id, type, method, amount, account_num) VALUES (?, 'site_withdraw', 'site_to_bot', ?, ?)",
+                   (user.id, amount, wayx_acc))
+    conn.commit()
+    tx_id = cursor.lastrowid
+    conn.close()
+
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"🌐 **طلب سحب من الموقع (#{tx_id})**\n👤 المستخدم: {user.full_name} (`{user.id}`)\n🏷 الحساب: `{wayx_acc}`\n💰 المبلغ: {format_currency(amount)}",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ موافقة", callback_data=f"app_swit_{tx_id}"),
+             InlineKeyboardButton("❌ رفض", callback_data=f"rej_swit_{tx_id}")]
+        ])
+    )
+
+    await update.message.reply_text("✅ تم إرسال طلب سحب الرصيد من الموقع للإدارة بنجاح.")
+    return ConversationHandler.END
+
+# ----------------- لوحة الإدارة الشاملة -----------------
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     if not is_admin(user.id):
         return
 
-    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("⚙️ إعدادات البونص والحدود", callback_data="adm_settings")],
+        [InlineKeyboardButton("📋 سجلات الطلبات", callback_data="adm_logs")],
+        [InlineKeyboardButton("👥 إدارة المستخدمين", callback_data="adm_users")],
+        [InlineKeyboardButton("🎁 إدارة الأكواد والمسابقات", callback_data="adm_gifts")],
+        [InlineKeyboardButton("📢 الإذاعة والرسائل", callback_data="adm_broadcast")]
+    ]
+    await update.message.reply_text("🛠 **لوحة التحكم الإدارية الاحترافية:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    if data.startswith("adm_dep_app_"):
-        tx_id = int(data.split("_")[3])
-        conn = sqlite3.connect("wayxbet.db")
+async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+    user = update.effective_user
+    if not is_admin(user.id):
+        await query.answer("غير مسموح لك!", show_alert=True)
+        return
+
+    # معالجة الموافقات والرفض مع طلب اسم الأدمن
+    if data.startswith("app_acc_") or data.startswith("rej_acc_") or data.startswith("app_dep_") or data.startswith("rej_dep_") or data.startswith("app_sdep_") or data.startswith("rej_sdep_") or data.startswith("app_swit_") or data.startswith("rej_swit_"):
+        context.user_data['pending_admin_action'] = data
+        await query.message.reply_text("✍️ يرجى إرسال **اسمك الإداري** لإتمام هذه العملية:", parse_mode="Markdown")
+        context.user_data['awaiting_admin_name_state'] = True
+        return
+
+    if data == "adm_settings":
+        kb = [
+            [InlineKeyboardButton("تعديل حسابات الشحن", callback_data="set_accs")],
+            [InlineKeyboardButton("تعديل الحد الأدنى للسحب/الشحن", callback_data="set_limits")],
+            [InlineKeyboardButton("تعديل البونص والنسب", callback_data="set_bonus")]
+        ]
+        await query.message.edit_text("⚙️ **إعدادات البوت:**", reply_markup=InlineKeyboardMarkup(kb))
+    
+    elif data == "adm_logs":
+        kb = [
+            [InlineKeyboardButton("سجل الشحن", callback_data="log_dep"), InlineKeyboardButton("سجل السحب", callback_data="log_wit")],
+            [InlineKeyboardButton("سجل انشاء الحسابات", callback_data="log_accs")],
+            [InlineKeyboardButton("سجل موقع (سحب/شحن)", callback_data="log_site")]
+        ]
+        await query.message.edit_text("📋 **سجلات النظام:**", reply_markup=InlineKeyboardMarkup(kb))
+
+    elif data == "adm_users":
+        kb = [
+            [InlineKeyboardButton("عدد المستخدمين", callback_data="usr_count"), InlineKeyboardButton("تفاصيل لاعب", callback_data="usr_details")],
+            [InlineKeyboardButton("إضافة رصيد", callback_data="usr_add_bal"), InlineKeyboardButton("خصم رصيد", callback_data="usr_sub_bal")],
+            [InlineKeyboardButton("حظر مستخدم", callback_data="usr_ban"), InlineKeyboardButton("إلغاء الحظر", callback_data="usr_unban")]
+        ]
+        await query.message.edit_text("👥 **إدارة المستخدمين:**", reply_markup=InlineKeyboardMarkup(kb))
+
+    elif data == "usr_count":
+        conn = sqlite3.connect("wayxbet_pro.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, amount FROM transactions WHERE id = ? AND status = 'pending'", (tx_id,))
-        row = cursor.fetchone()
-        if row:
-            u_id, amt = row
-            cursor.execute("UPDATE transactions SET status = 'approved', admin_name = ? WHERE id = ?", (user.full_name, tx_id))
-            cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amt, u_id))
-            conn.commit()
-            await query.message.edit_text(f"✅ تم تأكيد إيداع المبلغ ({format_currency(amt)}) للمستخدم `{u_id}`")
-            try:
-                await context.bot.send_message(u_id, f"🎉 **تمت الموافق على إيداعك!** تمت إضافة {format_currency(amt)} لـ رصيدك.")
-            except:
-                pass
+        cursor.execute("SELECT COUNT(*) FROM users")
+        cnt = cursor.fetchone()[0]
         conn.close()
+        await query.answer(f"📊 إجمالي عدد مستخدمين البوت: {cnt}", show_alert=True)
 
-    elif data.startswith("adm_dep_rej_"):
-        tx_id = int(data.split("_")[3])
-        conn = sqlite3.connect("wayxbet.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id FROM transactions WHERE id = ?", (tx_id,))
-        row = cursor.fetchone()
-        if row:
-            cursor.execute("UPDATE transactions SET status = 'rejected', admin_name = ? WHERE id = ?", (user.full_name, tx_id))
-            conn.commit()
-            await query.message.edit_text("❌ تم رفض الإيداع.")
-            try:
-                await context.bot.send_message(row[0], "❌ تعذر قبول طلب الإيداع الخاص بك. يرجى مراجعة الدعم.")
-            except:
-                pass
-        conn.close()
+# استلام اسم الأدمن لإتمام العملية
+async def admin_name_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get('awaiting_admin_name_state'):
+        return
+    
+    admin_name = update.message.text.strip()
+    action = context.user_data.get('pending_admin_action')
+    context.user_data['awaiting_admin_name_state'] = False
 
-    elif data.startswith("adm_w_app_"):
-        tx_id = int(data.split("_")[3])
-        conn = sqlite3.connect("wayxbet.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, amount FROM transactions WHERE id = ?", (tx_id,))
-        row = cursor.fetchone()
-        if row:
-            cursor.execute("UPDATE transactions SET status = 'approved', admin_name = ? WHERE id = ?", (user.full_name, tx_id))
-            conn.commit()
-            await query.message.edit_text("✅ تم الموافقة على السحب بنجاح.")
-            try:
-                await context.bot.send_message(row[0], f"🎉 **تمت الموافقة على طلب السحب بقيمة {format_currency(row[1])}!**")
-            except:
-                pass
-        conn.close()
+    conn = sqlite3.connect("wayxbet_pro.db")
+    cursor = conn.cursor()
 
-    elif data.startswith("adm_w_rej_"):
-        tx_id = int(data.split("_")[3])
-        conn = sqlite3.connect("wayxbet.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, amount FROM transactions WHERE id = ?", (tx_id,))
-        row = cursor.fetchone()
-        if row:
-            u_id, amt = row
-            # إعادة الرصيد للمستخدم
-            cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amt, u_id))
-            cursor.execute("UPDATE transactions SET status = 'rejected', admin_name = ? WHERE id = ?", (user.full_name, tx_id))
-            conn.commit()
-            await query.message.edit_text("❌ تم رفض السحب وإعادة الرصيد للمستخدم.")
-            try:
-                await context.bot.send_message(u_id, f"❌ تم رفض طلب السحب الخاص بك وتم إعادة مبلغ {format_currency(amt)} لرصيدك.")
-            except:
-                pass
-        conn.close()
+    parts = action.split("_")
+    action_type = parts[0] # app or rej
+    target = parts[1] # acc, dep, sdep, swit
+    req_id = parts[2]
 
-    elif data.startswith("adm_acc_app_"):
-        req_id = int(data.split("_")[3])
-        conn = sqlite3.connect("wayxbet.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, wayxbet_user, wayxbet_pass FROM account_requests WHERE id = ?", (req_id,))
-        row = cursor.fetchone()
-        if row:
-            u_id, w_usr, w_pass = row
-            cursor.execute("UPDATE users SET wayxbet_user = ?, wayxbet_pass = ? WHERE user_id = ?", (w_usr, w_pass, u_id))
-            cursor.execute("UPDATE account_requests SET status = 'approved' WHERE id = ?", (req_id,))
-            conn.commit()
-            await query.message.edit_text(f"✅ تم قبول وإنشاء حساب WayXbet لـ `{u_id}`")
-            try:
-                await context.bot.send_message(u_id, f"🎮 **مبروك! تم تفعيل حسابك بـ WayXbet بنجاح:**\n\nاسم المستخدم: `{w_usr}`\nكلمة السر: `{w_pass}`")
-            except:
-                pass
-        conn.close()
+    if target == "acc":
+        cursor.execute("SELECT user_id, wayxbet_user FROM account_requests WHERE id = ?", (req_id,))
+        res = cursor.fetchone()
+        if res:
+            u_id, w_user = res
+            if action_type == "app":
+                cursor.execute("UPDATE users SET wayxbet_account = ? WHERE user_id = ?", (w_user, u_id))
+                cursor.execute("UPDATE account_requests SET status = 'approved', admin_name = ? WHERE id = ?", (admin_name, req_id))
+                conn.commit()
+                await context.bot.send_message(chat_id=u_id, text=f"🎉 تمت الموافقة على حسابك بواسطة ({admin_name})! يمكنك الشحن الآن.\nحسابك المثبت: `{w_user}`", parse_mode="Markdown")
+            else:
+                cursor.execute("UPDATE account_requests SET status = 'rejected', admin_name = ? WHERE id = ?", (admin_name, req_id))
+                conn.commit()
+                await context.bot.send_message(chat_id=u_id, text=f"❌ نأسف، تم رفض طلب إنشاء الحساب بواسطة ({admin_name}).")
 
-# ----------------- الدالة الرئيسية لتشغيل البوت -----------------
-def main():
-    app = Application.builder().token(TOKEN).build()
+    elif target in ["dep", "sdep", "swit"]:
+        cursor.execute("SELECT user_id, amount, type FROM transactions WHERE id = ?", (req_id,))
+        res = cursor.fetchone()
+        if res:
+            u_id, amt, t_type = res
+            if action_type == "app":
+                cursor.execute("UPDATE transactions SET status = 'approved', admin_name = ? WHERE id = ?", (admin_name, req_id))
+                if t_type == "deposit" or t_type == "site_withdraw":
+                    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amt, u_id))
+                conn.commit()
+                await context.bot.send_message(chat_id=u_id, text=f"✅ تمت الموافقة على معاملتك المالية بواسطة الإداري: {admin_name}")
+            else:
+                cursor.execute("UPDATE transactions SET status = 'rejected', admin_name = ? WHERE id = ?", (admin_name, req_id))
+                conn.commit()
+                await context.bot.send_message(chat_id=u_id, text=f"❌ تم رفض معاملتك المالية بواسطة الإداري: {admin_name}")
 
-    # محادثة التسجيل والتحقق مع الأمان ضد الرشق
-    auth_handler = ConversationHandler(
+    conn.close()
+    await update.message.reply_text(f"✅ تم تنفيذ الطلب وتوثيق اسم الأدمن ({admin_name}) بنجاح.")
+
+# ----------------- تشغيل النظام -----------------
+if __name__ == "__main__":
+    init_db()
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            GET_CAPTCHA_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_captcha_question)],
-            GET_CAPTCHA_PIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_captcha_pin)],
-            GET_CONTACT: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), receive_contact)],
-        },
-        fallbacks=[CommandHandler("start", start)],
-        allow_reentry=True
-    )
-
-    # محادثة إنشاء حساب
-    create_acc_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_create_account, pattern="^create_acc$")],
-        states={
-            CREATE_ACCOUNT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_acc_name)],
-            CREATE_ACCOUNT_PASS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_acc_pass)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    )
-
-    # محادثة الإيداع
-    deposit_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_deposit, pattern="^deposit$")],
-        states={
-            DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_deposit_amount)],
-            DEPOSIT_TX: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_deposit_tx)],
+            CAPTCHA_Q: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha_question_handler)],
+            CAPTCHA_PIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha_pin_handler)],
+            GET_CONTACT: [MessageHandler(filters.CONTACT, contact_handler)],
+            ACC_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_acc_name)],
+            ACC_PASS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_acc_pass)],
+            WITHDRAW_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_method_chosen)],
+            WITHDRAW_ACC: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_acc_received)],
+            WITHDRAW_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_amt_received)],
+            WITHDRAW_SPEED: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_speed_chosen)],
+            DEPOSIT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, deposit_method_chosen)],
+            DEPOSIT_TX: [MessageHandler(filters.TEXT & ~filters.COMMAND, deposit_tx_received)],
+            DEPOSIT_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, deposit_amt_received)],
+            SITE_DEP_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, site_deposit_received)],
+            SITE_WIT_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, site_withdraw_received)],
+            GIFT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, gift_code_received)],
+            SUPPORT_INPUT: [MessageHandler(filters.ALL & ~filters.COMMAND, support_received)],
         },
         fallbacks=[CommandHandler("start", start)]
     )
 
-    # محادثة السحب
-    withdraw_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_withdraw, pattern="^withdraw$")],
-        states={
-            WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_amount)],
-            WITHDRAW_ACC: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_acc)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    )
+    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CallbackQueryHandler(admin_callback_router))
+    
+    # معالجات الأزرار الرئيسية في القائمة
+    app.add_handler(MessageHandler(filters.Text(["WayxBet"]), wayxbet_menu_entry))
+    app.add_handler(MessageHandler(filters.Text(["سحب رصيد"]), withdraw_start))
+    app.add_handler(MessageHandler(filters.Text(["شحن رصيد"]), deposit_start))
+    app.add_handler(MessageHandler(filters.Text(["احالاتي"]), referrals_menu))
+    app.add_handler(MessageHandler(filters.Text(["عجلة الحظ 🎡"]), lucky_wheel_menu))
+    app.add_handler(MessageHandler(filters.Text(["المسابقات الحالية"]), current_competitions))
+    app.add_handler(MessageHandler(filters.Text(["تواصل مع الدعم"]), support_start))
+    app.add_handler(MessageHandler(filters.Text(["كود هدية"]), gift_code_start))
+    app.add_handler(MessageHandler(filters.Text(["شحن رصيد من البوت للموقع"]), site_deposit_start))
+    app.add_handler(MessageHandler(filters.Text(["سحب رصيد من الموقع للبوت"]), site_withdraw_start))
+    app.add_handler(MessageHandler(filters.Text(["🛠 لوحة الإدارة"]), admin_panel))
+    
+    # التقاط اسم الأدمن عند اتخاذ إجراء
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_name_received))
 
-    # محادثة تحويل للموقع
-    bot_to_site_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_bot_to_site, pattern="^bot_to_site$")],
-        states={
-            BOT_TO_SITE_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_bot_to_site_amt)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    )
-
-    # محادثة كود هدية
-    gift_code_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_gift_code, pattern="^gift_code$")],
-        states={
-            GIFT_CODE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_gift_code)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    )
-
-    # محادثة الدعم
-    support_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_support, pattern="^support$")],
-        states={
-            SUPPORT_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_support_msg)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    )
-
-    app.add_handler(auth_handler)
-    app.add_handler(create_acc_handler)
-    app.add_handler(deposit_handler)
-    app.add_handler(withdraw_handler)
-    app.add_handler(bot_to_site_handler)
-    app.add_handler(gift_code_handler)
-    app.add_handler(support_handler)
-
-    app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="^check_sub$"))
-    app.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_panel$"))
-    app.add_handler(CallbackQueryHandler(admin_callback_actions, pattern="^adm_"))
-    app.add_handler(CallbackQueryHandler(main_callback_handler))
-
-    logger.info("🤖 Bot and WebServer are starting...")
+    print("🚀 بوت ROZ WAYXBET يعمل بكامل طاقته الآن...")
     app.run_polling()
-
-if __name__ == "__main__":
-    main()
