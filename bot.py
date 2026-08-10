@@ -389,8 +389,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await check_subscription(user.id, context):
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("قناة البوت 📢", url=f"https://t.me/{CHANNEL_BOT[1:]}")],
-            [InlineKeyboardButton("قناة المبرمج 👨‍💻", url=f"https://t.me/{CHANNEL_PROG[1:]}")],
+            [InlineKeyboardButton("قناة البوت 📢", url=f"https://t.me/{cashinsher[1:]}")],
+            [InlineKeyboardButton("قناة المبرمج 👨‍💻", url=f"https://t.me/{lerafree[1:]}")],
             [InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="verify_subscription")]
         ])
         await update.message.reply_text(
