@@ -24,15 +24,22 @@ from telegram.ext import (
     filters,
     ConversationHandler,
 )
-
-# ----------------- خادم فحوصات الصحة لتفادي Timeout على Render -----------------
+# ------------------ خادم فحوصات الصحة تفادي Timeout ------------------
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot Service is Running Alive")
+        if os.path.exists("index.html"):
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            with open("index.html", "rb") as f:
+                self.wfile.write(f.read())
+        else:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Bot Service is Running Alive")
+
     def log_message(self, format, *args):
-        pass
+        return
 
 def run_health_check_server():
     port = int(os.environ.get("PORT", 8080))
