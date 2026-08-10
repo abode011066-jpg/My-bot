@@ -22,7 +22,7 @@ from telegram.ext import (
 )
 
 # ----------------- الإعدادات العامة -----------------
-TOKEN = "ضع_توكن_البوت_هنا"
+TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"
 ADMIN_ID = 7255100997
 CHANNEL_BOT = "@cashinsher"
 CHANNEL_PROG = "@lerafree"
