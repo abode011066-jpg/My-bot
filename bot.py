@@ -87,13 +87,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                 else:
                     prizes = [
                         {"label": "0", "sub": "حظ أوفر", "val": 0},
-                        {"label": "5", "sub": "ليرة", "val": 5},
-                        {"label": "10", "sub": "ليرة", "val": 10},
-                        {"label": "25", "sub": "ليرة", "val": 25},
-                        {"label": "50", "sub": "ليرة", "val": 50},
-                        {"label": "100", "sub": "ليرة", "val": 100},
-                        {"label": "500", "sub": "ليرة", "val": 500},
-                        {"label": "1000", "sub": "ليرة", "val": 1000}
+                        {"label": "500", "sub": "ليرة", "val": 5},
+                        {"label": "1000", "sub": "ليرة", "val": 10},
+                        {"label": "2500", "sub": "ليرة", "val": 25},
+                        {"label": "5000", "sub": "ليرة", "val": 50},
+                        {"label": "10000", "sub": "ليرة", "val": 100},
+                        {"label": "50000", "sub": "ليرة", "val": 500},
+                        {"label": "100000", "sub": "ليرة", "val": 1000}
                     ]
                     
                     prob_keys = ["wheel_prob_0", "wheel_prob_5", "wheel_prob_10", "wheel_prob_25", "wheel_prob_50", "wheel_prob_100", "wheel_prob_1000", "wheel_prob_10000"]
