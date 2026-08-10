@@ -4,6 +4,8 @@ import re
 import random
 import os
 import threading
+import json
+import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import (
@@ -24,9 +26,36 @@ from telegram.ext import (
     filters,
     ConversationHandler,
 )
-# ------------------ خادم فحوصات الصحة تفادي Timeout ------------------
+
+# ------------------ خادم فحوصات الصحة وخدمات العجلة API ------------------
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
+        
+        # API لجلب بيانات العجلة للمستخدم
+        if path.startswith("/api/user/"):
+            try:
+                user_id = int(path.split("/")[-1])
+                conn = sqlite3.connect("wayxbet_vip_pro.db")
+                c = conn.cursor()
+                c.execute("SELECT spins, balance FROM users WHERE user_id = ?", (user_id,))
+                res = c.fetchone()
+                conn.close()
+                if res:
+                    response = json.dumps({"success": True, "spins": res[0], "balance": res[1]}).encode('utf-8')
+                else:
+                    response = json.dumps({"success": False, "spins": 0, "balance": 0}).encode('utf-8')
+            except Exception as e:
+                response = json.dumps({"success": False, "error": str(e)}).encode('utf-8')
+            
+            self.send_response(200)
+            self.send_header("Content-type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(response)
+            return
+
         if os.path.exists("index.html"):
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
@@ -37,6 +66,77 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"Bot Service is Running Alive")
+
+    def do_POST(self):
+        # API لدوران العجلة وحساب الأرباح
+        if self.path == "/api/spin":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                user_id = int(data.get("user_id"))
+
+                conn = sqlite3.connect("wayxbet_vip_pro.db")
+                c = conn.cursor()
+                c.execute("SELECT spins, balance FROM users WHERE user_id = ?", (user_id,))
+                res = c.fetchone()
+
+                if not res or res[0] <= 0:
+                    conn.close()
+                    response = json.dumps({"success": False, "message": "لا توجد لديك لفات متاحة!"}).encode('utf-8')
+                else:
+                    prizes = [
+                        {"label": "0", "sub": "حظ أوفر", "val": 0},
+                        {"label": "5", "sub": "ليرة", "val": 5},
+                        {"label": "10", "sub": "ليرة", "val": 10},
+                        {"label": "25", "sub": "ليرة", "val": 25},
+                        {"label": "50", "sub": "ليرة", "val": 50},
+                        {"label": "100", "sub": "ليرة", "val": 100},
+                        {"label": "500", "sub": "ليرة", "val": 500},
+                        {"label": "1000", "sub": "ليرة", "val": 1000}
+                    ]
+                    
+                    prob_keys = ["wheel_prob_0", "wheel_prob_5", "wheel_prob_10", "wheel_prob_25", "wheel_prob_50", "wheel_prob_100", "wheel_prob_1000", "wheel_prob_10000"]
+                    weights = []
+                    for k in prob_keys[:8]:
+                        c.execute("SELECT value FROM settings WHERE key = ?", (k,))
+                        r = c.fetchone()
+                        weights.append(float(r[0]) if r and r[0] else 1.0)
+
+                    chosen_idx = random.choices(range(len(prizes)), weights=weights, k=1)[0]
+                    win_prize = prizes[chosen_idx]
+
+                    c.execute("UPDATE users SET spins = spins - 1, balance = balance + ? WHERE user_id = ?", (win_prize["val"], user_id))
+                    conn.commit()
+
+                    c.execute("SELECT spins, balance FROM users WHERE user_id = ?", (user_id,))
+                    updated_res = c.fetchone()
+                    conn.close()
+
+                    response = json.dumps({
+                        "success": True,
+                        "prize_index": chosen_idx,
+                        "prize": win_prize,
+                        "new_balance": updated_res[1],
+                        "remaining_spins": updated_res[0]
+                    }).encode('utf-8')
+
+            except Exception as e:
+                response = json.dumps({"success": False, "message": str(e)}).encode('utf-8')
+
+            self.send_response(200)
+            self.send_header("Content-type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(response)
+            return
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def log_message(self, format, *args):
         return
@@ -51,6 +151,7 @@ threading.Thread(target=run_health_check_server, daemon=True).start()
 # ----------------- الإعدادات العامة -----------------
 TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"
 ADMIN_IDS = [7255100997, 8984953082]
+ADMIN_ID = ADMIN_IDS[0]
 CHANNEL_BOT = "@cashinsher"
 CHANNEL_PROG = "@lerafree"
 SITE_URL = "https://wayxbet10.com"
@@ -63,8 +164,8 @@ logger = logging.getLogger(__name__)
 # ----------------- حالات المحادثة (Conversation States) -----------------
 (
     GET_CONTACT, ACC_NAME, ACC_PASS, 
-    WITHDRAW_ACC, WITHDRAW_AMT, WITHDRAW_SPEED, WITHDRAW_CONFIRM,
-    DEPOSIT_TX, DEPOSIT_AMT, 
+    DEPOSIT_METHOD, DEPOSIT_TX, DEPOSIT_AMT, 
+    WITHDRAW_METHOD, WITHDRAW_ACC, WITHDRAW_AMT, WITHDRAW_SPEED, WITHDRAW_CONFIRM,
     SITE_DEP_AMT, SITE_WIT_AMT, 
     GIFT_INPUT, SUPPORT_INPUT, 
     ADMIN_NAME_INPUT, ADMIN_BROADCAST_MSG, ADMIN_PRIV_ID, ADMIN_PRIV_MSG,
@@ -72,7 +173,7 @@ logger = logging.getLogger(__name__)
     ADMIN_BAL_ID, ADMIN_BAL_AMT, ADMIN_BAL_TYPE,
     ADMIN_BAN_ID, ADMIN_UNBAN_ID, ADMIN_VIEW_USER_ID, ADMIN_SETTING_VAL,
     ADMIN_WHEEL_PROB_VAL, ADMIN_TICKET_REPLY
-) = range(29)
+) = range(31)
 
 # ----------------- قاعدة البيانات الشاملة -----------------
 def init_db():
@@ -174,7 +275,8 @@ def init_db():
     for k, v in defaults.items():
         c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
         
-    c.execute("INSERT OR IGNORE INTO admins (admin_id, admin_name) VALUES (?, ?)", (ADMIN_ID, "المدير العام"))
+    for adm in ADMIN_IDS:
+        c.execute("INSERT OR IGNORE INTO admins (admin_id, admin_name) VALUES (?, ?)", (adm, "المدير العام"))
     conn.commit()
     conn.close()
 
@@ -495,6 +597,7 @@ async def withdraw_menu_callback(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_home")]
     ])
     await query.edit_message_text("💳 اختر طريقة السحب:", reply_markup=kb)
+    return WITHDRAW_METHOD
 
 async def withdraw_method_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -655,6 +758,7 @@ async def deposit_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_home")]
     ])
     await query.edit_message_text("💳 اختر طريقة الشحن:", reply_markup=kb)
+    return DEPOSIT_METHOD
 
 async def deposit_method_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -675,6 +779,7 @@ async def deposit_method_chosen(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown"
     )
     return DEPOSIT_TX
+
 async def deposit_tx_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['dep_tx'] = update.message.text.strip()
     min_d = float(get_setting("min_deposit") or 5000)
@@ -796,10 +901,8 @@ async def site_dep_amt_received(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown",
         reply_markup=kb
     )
-
     await update.message.reply_text("⏳ تم إرسال طلب الشحن إلى حسابك بالموقع للإدارة.")
     return ConversationHandler.END
-
 async def site_wit_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1171,6 +1274,7 @@ async def set_setting_val_received(update: Update, context: ContextTypes.DEFAULT
     set_setting(key, val)
     await update.message.reply_text(f"✅ تم حفظ القيمة الجديدة لـ `{key}` بنجاح!", parse_mode="Markdown")
     return ConversationHandler.END
+
 async def adm_accounts_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1445,7 +1549,6 @@ async def adm_reply_ticket_received(update: Update, context: ContextTypes.DEFAUL
     except Exception as e:
         await update.message.reply_text(f"❌ فشل إرسال الرد: {e}")
     return ConversationHandler.END
-
 # ----------------- تشغيل البوت -----------------
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -1463,6 +1566,7 @@ def main():
     wit_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(withdraw_menu_callback, pattern="^withdraw_menu$")],
         states={
+            WITHDRAW_METHOD: [CallbackQueryHandler(withdraw_method_chosen, pattern="^wit_meth_")],
             WITHDRAW_ACC: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_acc_received)],
             WITHDRAW_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_amt_received)],
             WITHDRAW_SPEED: [CallbackQueryHandler(withdraw_speed_chosen, pattern="^wit_speed_")],
@@ -1474,6 +1578,7 @@ def main():
     dep_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(deposit_menu_callback, pattern="^deposit_menu$")],
         states={
+            DEPOSIT_METHOD: [CallbackQueryHandler(deposit_method_chosen, pattern="^dep_meth_")],
             DEPOSIT_TX: [MessageHandler(filters.TEXT & ~filters.COMMAND, deposit_tx_received)],
             DEPOSIT_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, deposit_amt_received)],
         },
@@ -1611,8 +1716,6 @@ def main():
     app.add_handler(CallbackQueryHandler(back_home_callback, pattern="^back_home$"))
     app.add_handler(CallbackQueryHandler(refs_menu_callback, pattern="^refs_menu$"))
     app.add_handler(CallbackQueryHandler(comps_menu_callback, pattern="^comps_menu$"))
-    app.add_handler(dep_handler)
-    app.add_handler(CallbackQueryHandler(deposit_method_chosen, pattern="^dep_meth_"))
 
     # Admin Panel Submenus
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_panel$"))
@@ -1626,6 +1729,7 @@ def main():
 
     # Add Conversations
     app.add_handler(acc_handler)
+    app.add_handler(dep_handler)
     app.add_handler(wit_handler)
     app.add_handler(site_dep_handler)
     app.add_handler(site_wit_handler)
