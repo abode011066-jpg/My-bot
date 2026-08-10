@@ -545,9 +545,9 @@ async def wayxbet_menu_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     await query.edit_message_text(
         "📌 **شروط إنشاء الحساب:**\n"
-        "- أن يبدأ اسم الحساب بحرف كبير (Capital).\n"
+        "- أن يبدأ اسم الحساب بحرف كبير وحرفين مكررات (Capital).\n"
         "- أن ينتهي بـ `@123`.\n"
-        "مثال: `Roz133@`\n\n"
+        "مثال: ` هنا في حساب روز حرف o مكرر مرتين واول حرف كبير وينتهي @123 Roz133@`\n\n"
         "أدخل اسم المستخدم المطلوب:",
         parse_mode="Markdown"
     )
