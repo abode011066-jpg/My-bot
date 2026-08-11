@@ -1,394 +1,597 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>VIP Exclusive Wheel</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
-  
-  <style>
-    :root {
-      --neon-red: #ff003c;
-      --dark-red: #80001a;
-      --bg-dark: #070204;
-      --gold: #ffd700;
-    }
+import os
+import sys
+import logging
+import sqlite3
+import random
+import asyncio
+import requests
+import cloudscraper
+from datetime import datetime
+from aiohttp import web
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup,
+    KeyboardButton, ReplyKeyboardRemove, WebAppInfo
+)
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, MessageHandler,
+    ConversationHandler, ContextTypes, filters
+)
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-    }
+# ----------------------------------------------------
+# ⚙️ الإعدادات والبيانات الأساسية
+# ----------------------------------------------------
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-    body {
-      background: radial-gradient(circle at center, #2b0008 0%, #070204 100%);
-      color: #ffffff;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      padding: 15px;
-      overflow-x: hidden;
-    }
+# 👈 ضَع التوكين والآيدي هنا
+BOT_TOKEN = "8812713556:AAGv3bCjQnGgwSGxiqoX8ipuVTvlNTTiLdk"
+ADMIN_ID = 8812713556  # استبدله بـ ID حسابك الشخصي
 
-    /* الهيدر العلوي */
-    .header-badge {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255, 0, 60, 0.1);
-      border: 1px solid var(--neon-red);
-      box-shadow: 0 0 15px rgba(255, 0, 60, 0.4);
-      padding: 8px 18px;
-      border-radius: 30px;
-      margin-bottom: 10px;
-    }
+PARENT_ID = "2780167"
+SERVER_URL = "https://my-bot-a8sy.onrender.com"
+PORT = int(os.getenv("PORT", 8080))
+CHANNELS = ["@lerafree", "@cashinsher"]
 
-    .header-title {
-      font-size: 18px;
-      font-weight: 900;
-      color: #fff;
-      text-shadow: 0 0 10px var(--neon-red);
-      letter-spacing: 1px;
-    }
+# الـ Cookie الجديد والمستخرج من الـ cURL الخاص بك
+INITIAL_COOKIE = (
+    "PHPSESSID_cfc2a618c71d38b723f9059f3f2248a0960a5957e40dfb12fc3b946541c4fb78=0124652f5adc587ec7d464663a971a6c; "
+    "languageCode=en_GB; language=English%20%28UK%29; "
+    "__cf_bm=uqDO0oUn4_EglHNUnqM2ANbz.ZqxXpR.8isfH9.bXuE-1786470287.8289866-1.0.1.1-BRJQ8Ub4VAc9yonaYmwvNUrOBbcd0aRYZR_DmOx7jtVcGjGmvF3Yu_AiZzyLm_t_Lix0bGDx8xePeKdEtuPkz80Jh3B88cXgq4U01TMf5K39z0tbhIDT9MDOK8uccML9"
+)
 
-    /* منطقة العجلة والمؤشر */
-    .wheel-wrapper {
-      position: relative;
-      width: 330px;
-      height: 330px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin: 15px 0;
-    }
-
-    /* إطار نيون متوهج حول العجلة */
-    .wheel-outer-ring {
-      position: absolute;
-      width: 325px;
-      height: 325px;
-      border-radius: 50%;
-      border: 4px solid var(--neon-red);
-      box-shadow: 0 0 25px var(--neon-red), inset 0 0 15px var(--neon-red);
-      animation: pulseGlow 2s infinite alternate;
-      pointer-events: none;
-      z-index: 2;
-    }
-
-    @keyframes pulseGlow {
-      0% { box-shadow: 0 0 15px var(--neon-red), inset 0 0 10px var(--neon-red); }
-      100% { box-shadow: 0 0 30px var(--neon-red), inset 0 0 20px var(--neon-red); }
-    }
-
-    /* سهم التوجيه النيون (المؤشر) */
-    .pointer {
-      position: absolute;
-      top: -18px;
-      z-index: 10;
-      width: 36px;
-      height: 42px;
-      filter: drop-shadow(0 0 10px var(--neon-red));
-    }
-
-    canvas {
-      width: 310px;
-      height: 310px;
-      border-radius: 50%;
-      transition: transform 5s cubic-bezier(0.12, 0.8, 0.15, 1);
-      box-shadow: 0 0 30px rgba(0,0,0,0.9);
-    }
-
-    /* المركز الذهبي الفخم */
-    .center-cap {
-      position: absolute;
-      width: 65px;
-      height: 65px;
-      background: radial-gradient(circle, #ffe57f 0%, #b78103 100%);
-      border: 3px solid #ffffff;
-      border-radius: 50%;
-      z-index: 5;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
-      font-weight: 900;
-      color: #000;
-      font-size: 14px;
-    }
-
-    /* كروت الإحصائيات والمعلومات في الأسفل */
-    .info-container {
-      display: flex;
-      gap: 12px;
-      width: 100%;
-      max-width: 360px;
-      margin-bottom: 15px;
-    }
-
-    .info-card {
-      flex: 1;
-      background: rgba(20, 5, 10, 0.8);
-      border: 1px solid rgba(255, 0, 60, 0.3);
-      border-radius: 12px;
-      padding: 10px;
-      text-align: center;
-      backdrop-filter: blur(8px);
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-    }
-
-    .card-label {
-      font-size: 11px;
-      color: #aaa;
-      margin-bottom: 4px;
-    }
-
-    .card-value {
-      font-size: 16px;
-      font-weight: bold;
-      color: var(--gold);
-      text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
-    }
-
-    /* زر "ابدأ الدوران" النيون الأحمر */
-    .spin-btn {
-      width: 100%;
-      max-width: 360px;
-      padding: 16px;
-      border: none;
-      border-radius: 30px;
-      background: linear-gradient(135deg, #ff003c 0%, #990024 100%);
-      color: #ffffff;
-      font-size: 20px;
-      font-weight: 900;
-      cursor: pointer;
-      box-shadow: 0 0 20px rgba(255, 0, 60, 0.6);
-      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-      transition: all 0.2s ease;
-      letter-spacing: 1px;
-    }
-
-    .spin-btn:active {
-      transform: scale(0.96);
-      box-shadow: 0 0 10px rgba(255, 0, 60, 0.4);
-    }
-
-    .spin-btn:disabled {
-      background: #333;
-      box-shadow: none;
-      color: #777;
-      cursor: not-allowed;
-    }
-  </style>
-</head>
-<body>
-
-  <!-- الهيدر -->
-  <div class="header-badge">
-    <span style="color: var(--neon-red);">👑</span>
-    <span class="header-title">VIP EXCLUSIVE</span>
-  </div>
-
-  <!-- العجلة -->
-  <div class="wheel-wrapper">
-    <div class="wheel-outer-ring"></div>
+# ----------------------------------------------------
+# 🗄️ قاعدة البيانات والتأسيس
+# ----------------------------------------------------
+def init_db():
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
     
-    <!-- سهم التوجيه الأحمر -->
-    <svg class="pointer" viewBox="0 0 30 40">
-      <polygon points="15,40 0,0 30,0" fill="#ff003c" stroke="#ffffff" stroke-width="2"/>
-    </svg>
+    # جدول المستخدمين
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        full_name TEXT,
+        site_username TEXT,
+        site_player_id TEXT,
+        bot_balance REAL DEFAULT 0.0,
+        spins_left INTEGER DEFAULT 1,
+        referred_by INTEGER,
+        verified INTEGER DEFAULT 0
+    )''')
 
-    <canvas id="wheelCanvas" width="600" height="600"></canvas>
+    # جدول طلبات المعاملات المعلقة (شحن / سحب)
+    c.execute('''CREATE TABLE IF NOT EXISTS pending_tx (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        tx_type TEXT,
+        amount REAL,
+        details TEXT,
+        status TEXT DEFAULT 'PENDING'
+    )''')
 
-    <div class="center-cap">
-      <span style="font-size: 10px;">👑</span>
-      <span>VIP</span>
-    </div>
-  </div>
+    # جدول إعدادات النظام ونسب العجلة
+    c.execute('''CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )''')
 
-  <!-- كروت البيانات -->
-  <div class="info-container">
-    <div class="info-card">
-      <div class="card-label">الرصيد الحالي</div>
-      <div class="card-value" id="balance-val">0 ليرة</div>
-    </div>
-    <div class="info-card">
-      <div class="card-label">اللفات المتاحة</div>
-      <div class="card-value" id="spins-val" style="color: var(--neon-red);">0</div>
-    </div>
-  </div>
-
-  <!-- زر التشغيل -->
-  <button class="spin-btn" id="spin-btn" onclick="startSpin()">ابدأ الدوران 🎯</button>
-
-  <script>
-    const tg = window.Telegram?.WebApp;
-    if (tg) { tg.ready(); tg.expand(); }
-
-    const userId = tg?.initDataUnsafe?.user?.id || 123456;
-    const canvas = document.getElementById("wheelCanvas");
-    const ctx = canvas.getContext("2d");
-    const spinBtn = document.getElementById("spin-btn");
-
-    let userSpins = 0;
-    let userBalance = 0;
-    let isSpinning = false;
-    let currentRotation = 0;
-
-    // أقسام العجلة بتصميم الكازينو الأسود والأحمر
-    const prizes = [
-      { label: "0", sub: "حظ أوفر", color: "#111111", textCol: "#ff4d4d", icon: "❌" },
-      { label: "5", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "🪙" },
-      { label: "10", sub: "ليرة", color: "#111111", textCol: "#ffd700", icon: "🪙" },
-      { label: "25", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "💰" },
-      { label: "50", sub: "ليرة", color: "#111111", textCol: "#ffd700", icon: "💰" },
-      { label: "100", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "💎" },
-      { label: "500", sub: "ليرة", color: "#111111", textCol: "#ffd700", icon: "💎" },
-      { label: "1000", sub: "ليرة", color: "#80001a", textCol: "#ffffff", icon: "👑" }
-    ];
-
-    const numSlices = prizes.length;
-    const sliceAngle = (2 * Math.PI) / numSlices;
-
-    function drawWheel() {
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const radius = canvas.width / 2;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      for (let i = 0; i < numSlices; i++) {
-        const angle = i * sliceAngle;
-
-        // رسم الشريحة
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.arc(centerX, centerY, radius, angle, angle + sliceAngle);
-        ctx.closePath();
-        ctx.fillStyle = prizes[i].color;
-        ctx.fill();
-
-        // حدود الشريحة النيون
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#ff003c";
-        ctx.stroke();
-
-        // رسم النص والأيقونة
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate(angle + sliceAngle / 2);
-        ctx.textAlign = "right";
-        ctx.fillStyle = prizes[i].textCol;
-
-        // الرقم / الجائزة
-        ctx.font = "bold 36px 'Segoe UI', sans-serif";
-        ctx.fillText(`${prizes[i].icon} ${prizes[i].label}`, radius - 40, 0);
-
-        // النص الفرعي
-        ctx.font = "18px 'Segoe UI', sans-serif";
-        ctx.fillStyle = "#aaa";
-        ctx.fillText(prizes[i].sub, radius - 40, 28);
-
-        ctx.restore();
-      }
+    # الإعدادات الافتراضية
+    defaults = {
+        "referral_spin_enabled": "1",  # 1 = مفعّل, 0 = معطّل
+        "prob_0": "40",        # نسبة 0
+        "prob_500": "25",      # نسبة 500
+        "prob_1000": "15",     # نسبة 1000
+        "prob_2500": "10",     # نسبة 2500
+        "prob_5000": "5",      # نسبة 5000
+        "prob_10000": "3",     # نسبة 10000
+        "prob_50000": "1.5",   # نسبة 50000
+        "prob_100000": "0.5"   # نسبة 100000
     }
+    for k, v in defaults.items():
+        c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
-    drawWheel();
+    conn.commit()
+    conn.close()
 
-    async function loadUserData() {
-      try {
-        const res = await fetch(`/api/user/${userId}`);
-        const data = await res.json();
-        if (data.success) {
-          userSpins = data.spins;
-          userBalance = data.balance;
-          updateUI();
+def get_setting(key, default="0"):
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key=?", (key,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else default
+
+def set_setting(key, value):
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ----------------------------------------------------
+# 🌐 الاتصال المباشر مع الكاشيرة عبر CloudScraper
+# ----------------------------------------------------
+class WayxBetAPI:
+    def __init__(self, cookie):
+        self.headers = {
+            "authority": "agents.wayxbet.com",
+            "accept": "*/*",
+            "accept-language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+            "content-type": "application/json",
+            "cookie": cookie,
+            "origin": "https://agents.wayxbet.com",
+            "referer": "https://agents.wayxbet.com/players/players",
+            "sec-ch-ua": '"Chromium";v="139", "Not;A=Brand";v="99"',
+            "sec-ch-ua-mobile": "?1",
+            "sec-ch-ua-platform": '"Android"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36"
         }
-      } catch (err) {}
-    }
+        self.scraper = cloudscraper.create_scraper(
+            browser={'browser': 'chrome', 'platform': 'android', 'desktop': False}
+        )
 
-    function updateUI() {
-      document.getElementById("spins-val").innerText = userSpins;
-      document.getElementById("balance-val").innerText = userBalance.toLocaleString() + " ليرة";
-      spinBtn.disabled = userSpins <= 0 || isSpinning;
-    }
-
-    async function startSpin() {
-      if (isSpinning || userSpins <= 0) return;
-
-      isSpinning = true;
-      spinBtn.disabled = true;
-
-      try {
-        const response = await fetch('/api/spin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId })
-        });
-        const result = await response.json();
-
-        if (!result.success) {
-          Swal.fire({ title: 'تنبيـه', text: result.message, icon: 'warning', confirmButtonColor: '#ff003c' });
-          isSpinning = false;
-          updateUI();
-          return;
+    def register_player(self, username, password):
+        url = "https://agents.wayxbet.com/global/api/Player/registerPlayer"
+        payload = {
+            "player": {
+                "email": f"{username}@123playr.nsp",
+                "password": password,
+                "parentId": PARENT_ID,
+                "login": username
+            }
         }
+        try:
+            r = self.scraper.post(url, json=payload, headers=self.headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                return True, data
+            return False, f"رمز الاستجابة: {r.status_code}"
+        except Exception as e:
+            return False, str(e)
 
-        rotateToSlice(result.prize_index, result);
-      } catch (e) {
-        // تجربة بصرية مفردة في حال عدم الاتصال بالسيرفر بعد:
-        const randomTarget = Math.floor(Math.random() * numSlices);
-        rotateToSlice(randomTarget, { prize: prizes[randomTarget], new_balance: userBalance, remaining_spins: userSpins - 1 });
-      }
-    }
-
-    function rotateToSlice(sliceIndex, resultData) {
-      const extraRounds = 6;
-      const sliceCenterAngle = (sliceIndex * (360 / numSlices)) + ((360 / numSlices) / 2);
-      const targetDegree = (360 - sliceCenterAngle - 90) % 360;
-
-      const finalDegree = (extraRounds * 360) + targetDegree;
-      currentRotation += finalDegree;
-
-      canvas.style.transform = `rotate(${currentRotation}deg)`;
-
-      setTimeout(() => {
-        isSpinning = false;
-        userSpins = resultData.remaining_spins ?? (userSpins - 1);
-        userBalance = resultData.new_balance ?? userBalance;
-        updateUI();
-
-        const prize = prizes[sliceIndex];
-        if (prize.label !== "0") {
-          confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-          Swal.fire({
-            icon: 'success',
-            title: '🎉 مبروك الفوز!',
-            text: `ربحت ${prize.label} ${prize.sub}`,
-            background: '#111',
-            color: '#fff',
-            confirmButtonColor: '#ff003c'
-          });
-        } else {
-          Swal.fire({
-            icon: 'error',
-            title: 'حظ أوفر!',
-            text: 'لم تفز هذه المرة، حاول مجدداً.',
-            background: '#111',
-            color: '#fff',
-            confirmButtonColor: '#333'
-          });
+    def deposit(self, player_id, amount):
+        url = "https://agents.wayxbet.com/global/api/Player/depositToPlayer"
+        payload = {
+            "amount": float(amount),
+            "comment": None,
+            "playerId": str(player_id),
+            "currencyCode": "NSP",
+            "moneyStatus": 5
         }
-      }, 5000);
-    }
+        try:
+            r = self.scraper.post(url, json=payload, headers=self.headers, timeout=10)
+            return (r.status_code == 200), r.text
+        except Exception as e:
+            return False, str(e)
 
-    loadUserData();
-  </script>
-</body>
-</html>
+    def withdraw(self, player_id, amount):
+        url = "https://agents.wayxbet.com/global/api/Player/withdrawFromPlayer"
+        payload = {
+            "amount": -abs(float(amount)),
+            "comment": None,
+            "playerId": str(player_id),
+            "currencyCode": "NSP",
+            "moneyStatus": 5
+        }
+        try:
+            r = self.scraper.post(url, json=payload, headers=self.headers, timeout=10)
+            return (r.status_code == 200), r.text
+        except Exception as e:
+            return False, str(e)
+
+    def ping(self):
+        url = "https://agents.wayxbet.com/global/api/Player/getAgentAllWallets"
+        try:
+            self.scraper.get(url, headers=self.headers, timeout=5)
+        except Exception:
+            pass
+
+cashier = WayxBetAPI(INITIAL_COOKIE)
+
+# ----------------------------------------------------
+# 🔄 حارس تنشيط الجلسة لضمان العمل 24/7
+# ----------------------------------------------------
+async def keep_cashier_alive():
+    while True:
+        await asyncio.sleep(600)  # كل 10 دقائق
+        await asyncio.to_thread(cashier.ping)
+
+# ----------------------------------------------------
+# 🌐 السيرفر المدمج لربط العجلة والـ APIs
+# ----------------------------------------------------
+async def handle_wheel_page(request):
+    if os.path.exists("wheel.html"):
+        with open("wheel.html", "r", encoding="utf-8") as f:
+            return web.Response(text=f.read(), content_type='text/html')
+    return web.Response(text="صفحة العجلة غير موجودة في المستودع", status=404)
+
+async def handle_get_user_wheel(request):
+    user_id = request.match_info.get('user_id')
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("SELECT bot_balance, spins_left FROM users WHERE user_id=?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+
+    if row:
+        return web.json_response({"success": True, "balance": row[0], "spins": row[1]})
+    return web.json_response({"success": False, "balance": 0, "spins": 0})
+
+async def handle_spin_wheel(request):
+    data = await request.json()
+    user_id = data.get("user_id")
+
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("SELECT bot_balance, spins_left FROM users WHERE user_id=?", (user_id,))
+    row = c.fetchone()
+
+    if not row or row[1] <= 0:
+        conn.close()
+        return web.json_response({"success": False, "message": "لا توجد لديك لَفات متاحة حالياً!"})
+
+    prizes = [
+        {"index": 0, "amt": 0, "prob": float(get_setting("prob_0", 40))},
+        {"index": 1, "amt": 500, "prob": float(get_setting("prob_500", 25))},
+        {"index": 2, "amt": 1000, "prob": float(get_setting("prob_1000", 15))},
+        {"index": 3, "amt": 2500, "prob": float(get_setting("prob_2500", 10))},
+        {"index": 4, "amt": 5000, "prob": float(get_setting("prob_5000", 5))},
+        {"index": 5, "amt": 10000, "prob": float(get_setting("prob_10000", 3))},
+        {"index": 6, "amt": 50000, "prob": float(get_setting("prob_50000", 1.5))},
+        {"index": 7, "amt": 100000, "prob": float(get_setting("prob_100000", 0.5))}
+    ]
+
+    weights = [p["prob"] for p in prizes]
+    selected = random.choices(prizes, weights=weights, k=1)[0]
+
+    new_bal = row[0] + selected["amt"]
+    new_spins = row[1] - 1
+
+    c.execute("UPDATE users SET bot_balance=?, spins_left=? WHERE user_id=?", (new_bal, new_spins, user_id))
+    conn.commit()
+    conn.close()
+
+    return web.json_response({
+        "success": True,
+        "prize_index": selected["index"],
+        "new_balance": new_bal,
+        "remaining_spins": new_spins
+    })
+
+async def start_dummy_server():
+    app = web.Application()
+    app.router.add_get('/', lambda r: web.Response(text="ROZ WAYXBET Server Active!"))
+    app.router.add_get('/wheel', handle_wheel_page)
+    app.router.add_get('/api/user/{user_id}', handle_get_user_wheel)
+    app.router.add_post('/api/spin', handle_spin_wheel)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+
+# ----------------------------------------------------
+# 📱 القوائم ولوحات التحكم
+# ----------------------------------------------------
+def get_main_menu_keyboard():
+    wheel_url = f"{SERVER_URL}/wheel"
+    keyboard = [
+        [InlineKeyboardButton("🎮 wayxbet (إنشاء/عرض الحساب)", callback_data="menu_wayxbet")],
+        [InlineKeyboardButton("💳 شحن رصيد للموقع", callback_data="menu_deposit"), InlineKeyboardButton("💸 سحب رصيد من الموقع", callback_data="menu_withdraw")],
+        [InlineKeyboardButton("🔄 شحن من رصيد البوت للموقع", callback_data="menu_bot_to_site")],
+        [InlineKeyboardButton("🔗 رابط إحالتي", callback_data="menu_referral"), InlineKeyboardButton("🎡 عجلة الحظ VIP 🎯", web_app=WebAppInfo(url=wheel_url))],
+        [InlineKeyboardButton("🎁 إدخال كود هدية", callback_data="menu_gift")],
+        [InlineKeyboardButton("📢 قناة المبرمج", url="https://t.me/lerafree"), InlineKeyboardButton("📢 قناة البوت", url="https://t.me/cashinsher")],
+        [InlineKeyboardButton("🌐 صفحتنا على الفيسبوك", url="https://www.facebook.com/share/1DYHkHPhLS/"), InlineKeyboardButton("💬 مراسلة الدعم", callback_data="menu_support")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_keyboard():
+    referral_status = "✅ مفعّلة" if get_setting("referral_spin_enabled") == "1" else "❌ معطلة"
+    keyboard = [
+        [InlineKeyboardButton(f"🎁 لفة مجانية للإحالة: {referral_status}", callback_data="toggle_ref_spin")],
+        [InlineKeyboardButton("⚙️ تعديل احتمالات جوائز العجلة", callback_data="admin_wheel_probs")],
+        [InlineKeyboardButton("📢 إذاعة للمستخدمين", callback_data="admin_broadcast")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# ----------------------------------------------------
+# 🚀 بدء البوت والتحقق (مرة واحدة فقط)
+# ----------------------------------------------------
+CAPTCHA_ANSWER, REG_USER, REG_PASS, DEPOSIT_AMT, WITHDRAW_AMT, B2S_AMT = range(6)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    args = context.args
+
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("SELECT verified FROM users WHERE user_id=?", (user.id,))
+    row = c.fetchone()
+
+    # معالجة رابط الإحالة
+    ref_id = None
+    if args and args[0].isdigit() and int(args[0]) != user.id:
+        ref_id = int(args[0])
+
+    if not row:
+        c.execute("INSERT INTO users (user_id, full_name, referred_by) VALUES (?, ?, ?)", (user.id, user.full_name, ref_id))
+        conn.commit()
+        is_verified = 0
+    else:
+        is_verified = row[0]
+    conn.close()
+
+    # إذا تم التحقق سابقاً يُفتح البوت مباشرة دون كابتشا
+    if is_verified == 1:
+        await send_main_dashboard(update, context)
+        return ConversationHandler.END
+
+    # اختبار أمان بسيط لمرة واحدة فقط
+    num1, num2 = random.randint(1, 9), random.randint(1, 9)
+    context.user_data['captcha_ans'] = num1 + num2
+    await update.message.reply_text(
+        f"🤖 **اختبار أمان لمكافحة الروبوتات (مرة واحدة فقط):**\n\nالرجاء كتابة الناتج: `{num1} + {num2} = ?`",
+        parse_mode="Markdown"
+    )
+    return CAPTCHA_ANSWER
+
+async def check_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        ans = int(update.message.text.strip())
+        if ans == context.user_data.get('captcha_ans'):
+            conn = sqlite3.connect("bot_database.db")
+            c = conn.cursor()
+            c.execute("UPDATE users SET verified=1 WHERE user_id=?", (update.effective_user.id,))
+            
+            # منح لفة مجانية للمُحيل إن كانت الميزة مفعّلة
+            c.execute("SELECT referred_by FROM users WHERE user_id=?", (update.effective_user.id,))
+            ref_row = c.fetchone()
+            if ref_row and ref_row[0] and get_setting("referral_spin_enabled") == "1":
+                c.execute("UPDATE users SET spins_left = spins_left + 1 WHERE user_id=?", (ref_row[0],))
+                try:
+                    await context.bot.send_message(ref_row[0], "🎉 **قام مستخدم جديد بالتسجيل عبر رابطك!** تم منحك لفة مجانية في عجلة الحظ 🎡.")
+                except Exception:
+                    pass
+
+            conn.commit()
+            conn.close()
+
+            await update.message.reply_text("✅ **تم اجتياز الاختبار بنجاح!**")
+            await send_main_dashboard(update, context)
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text("❌ إجابة خاطئة، يرجى المحاولة مرة أخرى.")
+            return CAPTCHA_ANSWER
+    except ValueError:
+        await update.message.reply_text("الرجاء إدخال رقم صحيح.")
+        return CAPTCHA_ANSWER
+
+async def send_main_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("SELECT bot_balance, site_username FROM users WHERE user_id=?", (user.id,))
+    row = c.fetchone()
+    conn.close()
+
+    bot_bal = row[0] if row else 0.0
+    site_acc = row[1] if row and row[1] else "غير منشأ بعد"
+
+    old_lira = int(bot_bal * 100)
+    new_lira = int(bot_bal)
+
+    text = (
+        f"✨ **أهلاً بك في بوت ROZ WAYXBET** ✨\n\n"
+        f"👤 **اسم المستخدم:** {user.first_name}\n"
+        f"🆔 **الأيدي:** `{user.id}`\n"
+        f"🎮 **حساب الموقع:** `{site_acc}`\n\n"
+        f"💰 **رصيدك في البوت:**\n"
+        f"👈 {old_lira} ل س ق | {new_lira} ل س ج\n\n"
+        f"🌐 **رابط الموقع الرسمي:**\nwayxbet10.com"
+    )
+
+    if update.callback_query:
+        await update.callback_query.message.edit_text(text, parse_mode="Markdown", reply_markup=get_main_menu_keyboard(), disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_main_menu_keyboard(), disable_web_page_preview=True)
+
+# ----------------------------------------------------
+# 🎮 إدارة الكازينو وإنشاء الحساب
+# ----------------------------------------------------
+async def cb_wayxbet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("SELECT site_username, site_player_id FROM users WHERE user_id=?", (query.from_user.id,))
+    row = c.fetchone()
+    conn.close()
+
+    if row and row[0]:
+        await query.message.edit_text(
+            f"🎮 **بيانات حسابك المسجل بالموقع:**\n\n"
+            f"👤 **اسم المستخدم:** `{row[0]}`\n"
+            f"🆔 **الـ ID في الموقع:** `{row[1]}`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 العودة للقائمة", callback_data="main_menu")]])
+        )
+    else:
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ إنشاء حساب جديد أوتوماتيكياً", callback_data="start_create_acc")],
+            [InlineKeyboardButton("🔙 العودة للقائمة", callback_data="main_menu")]
+        ])
+        await query.message.edit_text("لم تقم بإنشاء حساب على الموقع بعد. اضغط على الزر أدناه للبدء:", reply_markup=kb)
+
+async def start_create_acc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.edit_text("📝 **إنشاء حساب جديد في الموقع:**\n\nأدخل اسم المستخدم المطلوب (أحرف إنجليزية وأرقام فقط):")
+    return REG_USER
+
+async def process_reg_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['req_user'] = update.message.text.strip()
+    await update.message.reply_text("🔑 **أدخل كلمة المرور المطلوبة للحساب:**")
+    return REG_PASS
+
+async def process_reg_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_user = context.user_data.get('req_user')
+    raw_pass = update.message.text.strip()
+
+    final_user = f"Aa{raw_user}@123"
+    status_msg = await update.message.reply_text("⏳ جاري إنشاء الحساب في الكاشيرة أوتوماتيكياً...")
+
+    # تشغيل الاتصال في مسار خلفي مستمر لمنع تجميد البوت
+    success, res = await asyncio.to_thread(cashier.register_player, final_user, raw_pass)
+
+    if success and isinstance(res, dict) and res.get("player"):
+        player_id = res.get("player", {}).get("id", final_user)
+        conn = sqlite3.connect("bot_database.db")
+        c = conn.cursor()
+        c.execute("UPDATE users SET site_username=?, site_player_id=? WHERE user_id=?", (final_user, str(player_id), update.effective_user.id))
+        conn.commit()
+        conn.close()
+
+        await status_msg.edit_text(
+            f"🎉 **تم إنشاء حسابك بنجاح!**\n\n👤 **الاسم:** `{final_user}`\n🔑 **كلمة المرور:** `{raw_pass}`\n🆔 **Player ID:** `{player_id}`",
+            parse_mode="Markdown"
+        )
+        await send_main_dashboard(update, context)
+        return ConversationHandler.END
+    else:
+        err = res if isinstance(res, str) else "اسم المستخدم مستخدم سابقاً أو انتهت الجلسة"
+        await status_msg.edit_text(f"❌ **تعذر إنشاء الحساب!**\n⚠️ السبب: `{err}`", parse_mode="Markdown")
+        return ConversationHandler.END
+
+# ----------------------------------------------------
+# 💳 الشحن والسحب (موافقة المدير أولاً)
+# ----------------------------------------------------
+async def cb_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.edit_text("💳 **أدخل المبلغ المراد شحنه للموقع (ليرة سورية):**")
+    return DEPOSIT_AMT
+
+async def process_deposit_amt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    amt = update.message.text.strip()
+    if not amt.isdigit():
+        await update.message.reply_text("الرجاء إدخال رقم صحيح.")
+        return DEPOSIT_AMT
+
+    user = update.effective_user
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO pending_tx (user_id, tx_type, amount, details) VALUES (?, 'DEP', ?, 'شحن حقيقي')", (user.id, amt))
+    tx_id = c.lastrowid
+    conn.commit()
+    conn.close()
+
+    # إرسال طلب للأدمن للموافقة
+    admin_kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ موافقة وتأكيد الشحن", callback_data=f"approve_dep_{tx_id}"), InlineKeyboardButton("❌ رفض الطلب", callback_data=f"reject_tx_{tx_id}")]
+    ])
+    await context.bot.send_message(
+        ADMIN_ID,
+        f"📥 **طلب شحن جديد للموقع:**\n\n👤 العميل: {user.full_name} (`{user.id}`)\n💰 المبلغ: `{amt}` ليرة",
+        parse_mode="Markdown",
+        reply_markup=admin_kb
+    )
+
+    await update.message.reply_text("✅ **تم إرسال طلب الشحن للإدارة.** سيتم التنفيذ فور موافقة المدير!")
+    return ConversationHandler.END
+
+async def cb_approve_dep(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tx_id = query.data.split("_")[2]
+
+    conn = sqlite3.connect("bot_database.db")
+    c = conn.cursor()
+    c.execute("SELECT user_id, amount, status FROM pending_tx WHERE id=?", (tx_id,))
+    tx = c.fetchone()
+
+    if not tx or tx[2] != 'PENDING':
+        await query.edit_message_text("❌ الطلب معالج سابقاً.")
+        conn.close()
+        return
+
+    user_id, amt, _ = tx
+    c.execute("SELECT site_player_id FROM users WHERE user_id=?", (user_id,))
+    player_id = c.fetchone()[0]
+
+    if not player_id:
+        await query.edit_message_text("❌ العميل لم ينشئ حساب كاشيرة بعد!")
+        conn.close()
+        return
+
+    # تنفيذ الشحن أوتوماتيكياً عبر API الكاشيرة
+    success, res = await asyncio.to_thread(cashier.deposit, player_id, amt)
+
+    if success:
+        c.execute("UPDATE pending_tx SET status='APPROVED' WHERE id=?", (tx_id,))
+        conn.commit()
+        await query.edit_message_text(f"✅ **تم الشحن بنجاح** لحساب `{player_id}` بمبلغ `{amt}`!")
+        await context.bot.send_message(user_id, f"🎉 **تمت موافقة الإدارة وشحن `{amt}` ليرة لحسابك في الموقع بنجاح!**")
+    else:
+        await query.edit_message_text(f"❌ **فشل الشحن في سيرفر الكاشيرة:** `{res}`")
+
+    conn.close()
+
+# ----------------------------------------------------
+# 👑 لوحة تحكم الأدمن وبوت الإدارة
+# ----------------------------------------------------
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    await update.message.reply_text("👑 **لوحة تحكم المدير:**", reply_markup=get_admin_keyboard())
+
+async def cb_toggle_ref_spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    curr = get_setting("referral_spin_enabled", "1")
+    new_val = "0" if curr == "1" else "1"
+    set_setting("referral_spin_enabled", new_val)
+    
+    await query.message.edit_reply_markup(reply_markup=get_admin_keyboard())
+
+# ----------------------------------------------------
+# 🚀 بدء التشغيل والتهيئة العامة
+# ----------------------------------------------------
+async def post_init_task(application: Application):
+    asyncio.create_task(start_dummy_server())
+    asyncio.create_task(keep_cashier_alive())
+
+def main():
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init_task).build()
+
+    # محاور المحادثات
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler('start', start),
+            CallbackQueryHandler(start_create_acc, pattern="^start_create_acc$"),
+            CallbackQueryHandler(cb_deposit, pattern="^menu_deposit$")
+        ],
+        states={
+            CAPTCHA_ANSWER: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_captcha)],
+            REG_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_reg_user)],
+            REG_PASS: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_reg_pass)],
+            DEPOSIT_AMT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_deposit_amt)]
+        },
+        fallbacks=[CommandHandler('start', start)]
+    )
+
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler('admin', admin_panel))
+    application.add_handler(CallbackQueryHandler(cb_wayxbet, pattern="^menu_wayxbet$"))
+    application.add_handler(CallbackQueryHandler(send_main_dashboard, pattern="^main_menu$"))
+    application.add_handler(CallbackQueryHandler(cb_approve_dep, pattern="^approve_dep_"))
+    application.add_handler(CallbackQueryHandler(cb_toggle_ref_spin, pattern="^toggle_ref_spin$"))
+
+    print("🤖 ROZ WAYXBET Bot is Active and Ready!")
+    application.run_polling(drop_pending_updates=True)
+
+if __name__ == '__main__':
+    main()
