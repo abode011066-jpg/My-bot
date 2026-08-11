@@ -29,7 +29,7 @@ SERVER_URL = "https://my-bot-a8sy.onrender.com"
 PORT = int(os.getenv("PORT", 8080))
 CHANNELS = ["@lerafree", "@cashinsher"]
 
-# 🔐 بيانات حساب الوكيل (تم إدراجها بنجاح للتحديث التلقائي)
+# 🔐 بيانات حساب الوكيل للتحديث التلقائي
 AGENT_USERNAME = "Hoseen22"
 AGENT_PASSWORD = "Hh@123123"
 
@@ -118,30 +118,25 @@ def set_setting(key, value):
 init_db()
 
 # ----------------------------------------------------
-# 🛠️ معالج صيغة اسم المستخدم (تلقائياً بحسب شروط الموقع)
+# 🛠️ معالج صيغة اسم المستخدم
 # ----------------------------------------------------
 def format_cashier_username(raw_text: str) -> str:
-    # 1. تنظيف الإدخال وإزالة الرموز
     clean_text = re.sub(r'[^a-zA-Z0-9]', '', raw_text)
     if not clean_text:
         clean_text = "player"
 
-    # 2. التأكد من وجود حرف مكرر (دبل) في الاسم
     has_double = any(clean_text[i].lower() == clean_text[i+1].lower() and clean_text[i].isalpha() for i in range(len(clean_text) - 1))
-    
-    # 3. إذا لم يوجد حرف مكرر، نضاعف الحرف الثاني
     if not has_double:
         if len(clean_text) > 1 and clean_text[1].isalpha():
             clean_text = clean_text[0] + clean_text[1] + clean_text[1:]
         else:
             clean_text = clean_text[0] + clean_text
 
-    # 4. جعل أول حرف كبيراً Capital وتنسيق النهاية بـ @123
     clean_text = clean_text.capitalize()
     return f"{clean_text}@123"
 
 # ----------------------------------------------------
-# 🌐 الاتصال المباشر مع الكاشيرة وتحديث الكوكيز تلقائياً
+# 🌐 الاتصال المباشر مع الكاشيرة والتشخيص
 # ----------------------------------------------------
 class WayxBetAPI:
     def __init__(self, username, password):
@@ -180,15 +175,18 @@ class WayxBetAPI:
             if r.status_code == 200:
                 cookies_dict = self.scraper.cookies.get_dict()
                 self.cookie = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
-                logging.info("✅ تم تسجيل دخول الوكيل وتحديث الكوكيز تلقائياً!")
-                return True
-            logging.error(f"❌ فشل تسجيل دخول الوكيل: {r.status_code}")
+                logging.info("✅ تم تحديث كوكيز الكاشيرة تلقائياً!")
+                return True, "نجاح"
+            return False, f"رمز الحالة {r.status_code}: {r.text[:150]}"
         except Exception as e:
-            logging.error(f"❌ خطأ أثناء تجديد الجلسة: {e}")
-        return False
+            return False, str(e)
 
     def register_player(self, username, password):
-        if not self.cookie: self.auto_login()
+        if not self.cookie:
+            ok, msg = self.auto_login()
+            if not ok:
+                return False, f"فشل تسجيل دخول الوكيل: {msg}"
+
         url = "https://agents.wayxbet.com/global/api/Player/registerPlayer"
         safe_email_prefix = username.replace("@", "_")
         payload = {
@@ -201,12 +199,17 @@ class WayxBetAPI:
         }
         try:
             r = self.scraper.post(url, json=payload, headers=self.get_headers(), timeout=12)
-            if r.status_code in [401, 403] and self.auto_login():
-                r = self.scraper.post(url, json=payload, headers=self.get_headers(), timeout=12)
+            if r.status_code in [401, 403]:
+                ok, msg = self.auto_login()
+                if ok:
+                    r = self.scraper.post(url, json=payload, headers=self.get_headers(), timeout=12)
 
             if r.status_code == 200:
-                return True, r.json()
-            return False, f"رمز الاستجابة: {r.status_code}"
+                try:
+                    return True, r.json()
+                except Exception:
+                    return False, f"استجابة غير صالحة: {r.text[:150]}"
+            return False, f"رمز الاستجابة {r.status_code}: {r.text[:150]}"
         except Exception as e:
             return False, str(e)
 
@@ -222,7 +225,7 @@ class WayxBetAPI:
         }
         try:
             r = self.scraper.post(url, json=payload, headers=self.get_headers(), timeout=12)
-            if r.status_code in [401, 403] and self.auto_login():
+            if r.status_code in [401, 403] and self.auto_login()[0]:
                 r = self.scraper.post(url, json=payload, headers=self.get_headers(), timeout=12)
             return (r.status_code == 200), r.text
         except Exception as e:
@@ -240,7 +243,7 @@ class WayxBetAPI:
         }
         try:
             r = self.scraper.post(url, json=payload, headers=self.get_headers(), timeout=12)
-            if r.status_code in [401, 403] and self.auto_login():
+            if r.status_code in [401, 403] and self.auto_login()[0]:
                 r = self.scraper.post(url, json=payload, headers=self.get_headers(), timeout=12)
             return (r.status_code == 200), r.text
         except Exception as e:
@@ -342,7 +345,7 @@ def get_main_menu_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 # ----------------------------------------------------
-# 🚀 مراحل التسجيل ومعالجة الحساب
+# 🚀 مراحل التسجيل مع التقرير التشخيصي المفصل
 # ----------------------------------------------------
 (
     CAPTCHA_ANSWER, REG_USER, REG_PASS, DEPOSIT_AMT, WITHDRAW_AMT,
@@ -455,7 +458,7 @@ async def cb_wayxbet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_create_acc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.message.edit_text("📝 **إنشاء حساب جديد:**\n\nأدخل الاسم المطلوب (سيتم تنسيقه تلقائياً بالشكل الصحيح):")
+    await query.message.edit_text("📝 **إنشاء حساب جديد:**\n\nأدخل اسم المستخدم المطلوب:")
     return REG_USER
 
 async def process_reg_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -467,12 +470,11 @@ async def process_reg_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_user = context.user_data.get('req_user')
     raw_pass = update.message.text.strip()
 
-    # تنسيق الاسم آلياً (مثال: Abodi -> Aboodi@123)
     final_user = format_cashier_username(raw_user)
-    status_msg = await update.message.reply_text(f"⏳ جاري إنشاء الحساب `{final_user}`...", parse_mode="Markdown")
+    status_msg = await update.message.reply_text(f"⏳ جاري الاتصال بالكاشيرة لإنشاء الحساب `{final_user}`...", parse_mode="Markdown")
 
     try:
-        # تنفيذ الطلب بـ Thread لمنع التجمد
+        # تشغيل دالة التسجيل في Thread لتفادي التجمد
         success, res = await asyncio.to_thread(cashier.register_player, final_user, raw_pass)
 
         if success:
@@ -480,7 +482,6 @@ async def process_reg_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if isinstance(res, dict):
                 player_id = res.get("result", {}).get("id") or res.get("id", "تم الإنشاء")
 
-            # حفظ الاسم المنسق نهائياً والـ Player ID بالقاعدة
             conn = sqlite3.connect("bot_database.db")
             c = conn.cursor()
             c.execute("UPDATE users SET site_username=?, site_player_id=? WHERE user_id=?",
@@ -490,15 +491,19 @@ async def process_reg_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await status_msg.edit_text(
                 f"✅ **تم إنشاء الحساب بنجاح!**\n\n"
-                f"👤 **اسم المستخدم المسجل:** `{final_user}`\n"
+                f"👤 **اسم المستخدم:** `{final_user}`\n"
                 f"🔑 **كلمة المرور:** `{raw_pass}`\n"
                 f"🆔 **ID اللاعب:** `{player_id}`",
                 parse_mode="Markdown"
             )
         else:
-            await status_msg.edit_text(f"❌ **فشل إنشاء الحساب:**\n`{res}`", parse_mode="Markdown")
+            await status_msg.edit_text(
+                f"❌ **تقرير الفشل من السيرفر:**\n`{str(res)}`\n\n"
+                f"💡 *ملاحظة:* إذا كان الرمز 403 أو يتضمن Cloudflare، فهذا يعني حظر IP استضافة Render.",
+                parse_mode="Markdown"
+            )
     except Exception as e:
-        await status_msg.edit_text(f"❌ **حدث خطأ:**\n`{str(e)}`", parse_mode="Markdown")
+        await status_msg.edit_text(f"❌ **حدث خطأ غير متوقع:**\n`{str(e)}`", parse_mode="Markdown")
 
     return ConversationHandler.END
 
