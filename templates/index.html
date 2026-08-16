@@ -3,20 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Golden Lera 👑 - Pro Master 2026</title>
+    <title>Golden Lera 👑 - Red Royal Master 2026</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --neon-blue: #00f3ff;
-            --neon-glow: rgba(0, 243, 255, 0.85);
+            --neon-red: #ff0033;
+            --neon-red-bright: #ff1a4d;
+            --red-glow: rgba(255, 0, 51, 0.85);
             --gold: #ffdf00;
             --gold-light: #fff6a1;
             --gold-glow: rgba(255, 223, 0, 0.95);
-            --bg-dark: #000206;
-            --card-bg: rgba(2, 12, 25, 0.99);
-            --purple-glow: rgba(187, 0, 255, 0.7);
+            --bg-dark: #070002;
+            --card-bg: rgba(20, 2, 8, 0.99);
+            --gold-border: rgba(255, 223, 0, 0.6);
         }
 
         * {
@@ -29,7 +30,7 @@
         }
 
         body {
-            background: radial-gradient(circle at center, #0a305a 0%, var(--bg-dark) 100%);
+            background: radial-gradient(circle at center, #3a0008 0%, #120003 60%, var(--bg-dark) 100%);
             color: #fff;
             min-height: 100vh;
             display: flex;
@@ -39,11 +40,11 @@
             position: relative;
         }
 
-        /* --- 1. واجهة الدخول النيون --- */
+        /* --- 1. واجهة الدخول الحمراء والذهبية --- */
         .splash-screen {
             position: fixed;
             inset: 0;
-            background: radial-gradient(circle at center, #061e3d 0%, #010814 100%);
+            background: radial-gradient(circle at center, #2b0006 0%, #080002 100%);
             z-index: 999;
             display: flex;
             flex-direction: column;
@@ -53,9 +54,9 @@
         }
 
         .splash-box {
-            background: rgba(2, 12, 28, 0.95);
-            border: 2px solid var(--neon-blue);
-            box-shadow: 0 0 35px var(--neon-glow), inset 0 0 20px var(--neon-glow);
+            background: rgba(18, 1, 5, 0.96);
+            border: 2.5px solid var(--neon-red);
+            box-shadow: 0 0 40px var(--red-glow), inset 0 0 25px var(--red-glow);
             padding: 40px 30px;
             border-radius: 24px;
             text-align: center;
@@ -68,7 +69,7 @@
             font-size: 38px;
             font-weight: 900;
             color: #ffffff;
-            text-shadow: 0 0 20px var(--neon-blue), 0 0 40px var(--neon-blue);
+            text-shadow: 0 0 20px var(--neon-red), 0 0 40px var(--neon-red);
             letter-spacing: 2px;
             margin-bottom: 4px;
             line-height: 1.1;
@@ -76,35 +77,35 @@
 
         .splash-subtitle {
             font-size: 13px;
-            color: var(--neon-blue);
+            color: var(--gold);
             font-weight: 800;
             letter-spacing: 3px;
             margin-bottom: 28px;
-            text-shadow: 0 0 10px var(--neon-blue);
+            text-shadow: 0 0 10px var(--gold-glow);
         }
 
         .loader-container {
             position: relative;
             width: 100%;
             height: 12px;
-            background: rgba(0, 10, 25, 0.95);
-            border: 1.5px solid var(--neon-blue);
+            background: rgba(10, 0, 3, 0.95);
+            border: 1.5px solid var(--neon-red);
             border-radius: 10px;
             overflow: hidden;
-            box-shadow: 0 0 15px var(--neon-glow);
+            box-shadow: 0 0 15px var(--red-glow);
         }
 
         .loader-bar {
             width: 0%;
             height: 100%;
-            background: linear-gradient(90deg, #0055ff, var(--neon-blue), #ffffff);
-            box-shadow: 0 0 15px var(--neon-blue);
+            background: linear-gradient(90deg, #990000, var(--neon-red), var(--gold));
+            box-shadow: 0 0 15px var(--neon-red);
             transition: width 0.1s linear;
         }
 
         /* --- 2. الشريط العلوي للجائزة والرصيد --- */
         .jackpot-bar {
-            background: linear-gradient(90deg, #10002b, #240046, #10002b);
+            background: linear-gradient(90deg, #1f0005, #4a000c, #1f0005);
             border-bottom: 1.5px solid var(--gold);
             text-align: center;
             padding: 4px 0;
@@ -123,13 +124,13 @@
             justify-content: space-between;
             align-items: center;
             padding: 8px 12px;
-            background: rgba(1, 5, 12, 0.99);
-            border-bottom: 1.5px solid rgba(0, 243, 255, 0.4);
+            background: rgba(12, 1, 4, 0.98);
+            border-bottom: 1.5px solid var(--neon-red);
             backdrop-filter: blur(15px);
         }
 
         .buy-bonus-btn {
-            background: linear-gradient(135deg, #ff0055 0%, #ff8800 100%);
+            background: linear-gradient(135deg, #d90429 0%, #ffb703 100%);
             border: 1.5px solid var(--gold);
             color: #fff;
             padding: 6px 10px;
@@ -137,7 +138,7 @@
             font-size: 11px;
             font-weight: 900;
             cursor: pointer;
-            box-shadow: 0 0 15px rgba(255, 0, 85, 0.8);
+            box-shadow: 0 0 15px rgba(217, 4, 41, 0.8);
             display: flex;
             align-items: center;
             gap: 4px;
@@ -149,10 +150,10 @@
             text-align: center;
             font-size: 17px;
             font-weight: 900;
-            background: linear-gradient(180deg, #fff 0%, var(--gold) 50%, #b38f00 100%);
+            background: linear-gradient(180deg, #ffffff 0%, var(--gold) 50%, #d4af37 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 18px rgba(255, 223, 0, 0.6);
+            text-shadow: 0 0 18px rgba(255, 223, 0, 0.8);
             line-height: 1.1;
         }
 
@@ -162,7 +163,7 @@
             width: 34px;
             height: 34px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--gold), #ff8800);
+            background: linear-gradient(135deg, var(--gold), #ff0033);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -172,9 +173,9 @@
         }
 
         .balance-badge {
-            background: rgba(0, 243, 255, 0.12);
-            border: 1.5px solid var(--neon-blue);
-            color: var(--neon-blue);
+            background: rgba(255, 0, 51, 0.15);
+            border: 1.5px solid var(--neon-red);
+            color: #fff;
             padding: 4px 10px;
             border-radius: 20px;
             font-weight: 900;
@@ -182,7 +183,7 @@
             display: flex;
             align-items: center;
             gap: 4px;
-            box-shadow: 0 0 15px var(--neon-glow);
+            box-shadow: 0 0 15px var(--red-glow);
         }
 
         .top-widgets {
@@ -192,12 +193,12 @@
         }
 
         .mini-badge {
-            border: 1px solid var(--neon-blue);
+            border: 1px solid var(--neon-red);
             border-radius: 12px;
             padding: 4px 10px;
             font-size: 10px;
-            background: rgba(0,30,60,0.85);
-            color: var(--neon-blue);
+            background: rgba(25, 1, 6, 0.85);
+            color: var(--gold);
             display: flex;
             align-items: center;
             gap: 4px;
@@ -208,7 +209,7 @@
             display: none;
             justify-content: center;
             align-items: center;
-            background: linear-gradient(90deg, #ff0055, #ffdf00);
+            background: linear-gradient(90deg, #ff0033, var(--gold));
             color: #000;
             font-size: 11px;
             font-weight: 900;
@@ -231,9 +232,9 @@
             display: flex;
             flex-direction: row;
             direction: ltr;
-            background: rgba(1, 5, 12, 0.99);
-            border: 3px solid var(--neon-blue);
-            box-shadow: 0 0 45px var(--neon-glow), inset 0 0 25px var(--neon-glow);
+            background: rgba(8, 0, 2, 0.99);
+            border: 3px solid var(--neon-red);
+            box-shadow: 0 0 45px var(--red-glow), inset 0 0 25px var(--red-glow);
             border-radius: 18px;
             padding: 6px;
             position: relative;
@@ -249,7 +250,7 @@
             position: absolute;
             top: 0; left: 0; right: 0;
             height: 40px;
-            background: linear-gradient(180deg, rgba(1,5,12,0.9) 0%, rgba(1,5,12,0) 100%);
+            background: linear-gradient(180deg, rgba(8,0,2,0.95) 0%, rgba(8,0,2,0) 100%);
             z-index: 15;
             pointer-events: none;
         }
@@ -259,12 +260,12 @@
             position: absolute;
             bottom: 0; left: 0; right: 0;
             height: 40px;
-            background: linear-gradient(0deg, rgba(1,5,12,0.9) 0%, rgba(1,5,12,0) 100%);
+            background: linear-gradient(0deg, rgba(8,0,2,0.95) 0%, rgba(8,0,2,0) 100%);
             z-index: 15;
             pointer-events: none;
         }
 
-        /* قماش الكانفاس لرسم خطوط الربح */
+        /* قماش الكانفاس لرسم خطوط الربح الحمراء والذهبية */
         #paylinesCanvas {
             position: absolute;
             inset: 0;
@@ -288,11 +289,11 @@
         .reel {
             flex: 1;
             height: 240px;
-            background: radial-gradient(circle at center, rgba(8,25,50,0.6), rgba(2, 12, 25, 0.9));
+            background: radial-gradient(circle at center, rgba(35, 1, 6, 0.7), rgba(8, 0, 2, 0.95));
             border-radius: 8px;
             overflow: hidden;
             position: relative;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.9);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.95);
         }
 
         .reel:not(:last-child)::after {
@@ -302,8 +303,8 @@
             right: 0;
             width: 2px;
             height: 100%;
-            background: var(--neon-blue);
-            box-shadow: 0 0 8px var(--neon-blue), 0 0 15px var(--neon-glow);
+            background: var(--neon-red);
+            box-shadow: 0 0 8px var(--neon-red), 0 0 15px var(--red-glow);
             z-index: 10;
         }
 
@@ -361,31 +362,36 @@
             transition: all 0.2s ease-out;
         }
 
+        /* تنسيق الرموز الجديدة والمعدلة */
+        .symbol.fruit-watermelon .symbol-badge { filter: drop-shadow(0 0 14px #22c55e); }
         .symbol.fruit-grape .symbol-badge { filter: drop-shadow(0 0 14px #a855f7); }
         .symbol.fruit-orange .symbol-badge { filter: drop-shadow(0 0 14px #ff8c00); }
         .symbol.fruit-pineapple .symbol-badge { filter: drop-shadow(0 0 14px #eab308); }
         .symbol.fruit-lemon .symbol-badge { filter: drop-shadow(0 0 14px #facc15); }
-        .symbol.fruit-cherry .symbol-badge { filter: drop-shadow(0 0 14px #f43f5e); }
         .symbol.bell .symbol-badge { filter: drop-shadow(0 0 16px #ffdf00); }
+        
+        .symbol.star-sym .symbol-badge { filter: drop-shadow(0 0 18px #fbbf24) drop-shadow(0 0 8px #ffffff); }
+        .symbol.dollar-sym .symbol-badge { filter: drop-shadow(0 0 18px #10b981) drop-shadow(0 0 8px #ffffff); font-weight: 900; color: #10b981; font-size: 52px; }
 
         .symbol.seven .symbol-badge {
-            color: #ff0055;
-            text-shadow: 0 0 25px #ff0055, 0 0 12px #ffffff;
+            color: #ff0033;
+            text-shadow: 0 0 25px #ff0033, 0 0 12px #ffffff;
             font-weight: 900;
             font-style: italic;
             font-size: 55px;
-            filter: drop-shadow(0 0 20px #ff0055);
+            filter: drop-shadow(0 0 20px #ff0033);
         }
 
+        /* تحسين مظهر الجرة البراق والفخم مع الحفاظ على وضعية الوقوف */
         .symbol.jar-rare .symbol-badge {
             font-size: 54px;
-            filter: drop-shadow(0 0 22px var(--gold)) drop-shadow(0 0 8px #ff8800);
-            animation: jarGlowPulse 1s infinite alternate ease-in-out;
+            filter: drop-shadow(0 0 25px var(--gold)) drop-shadow(0 0 12px #ff1a4d) brightness(1.2);
+            animation: jarGlowPulse 0.9s infinite alternate ease-in-out;
         }
 
         @keyframes jarGlowPulse {
-            0% { transform: scale(0.95); filter: drop-shadow(0 0 15px var(--gold)); }
-            100% { transform: scale(1.1); filter: drop-shadow(0 0 30px var(--gold)) brightness(1.2); }
+            0% { transform: scale(0.96); filter: drop-shadow(0 0 18px var(--gold)) drop-shadow(0 0 5px #ff0033); }
+            100% { transform: scale(1.08); filter: drop-shadow(0 0 35px var(--gold)) drop-shadow(0 0 15px #ffb703) brightness(1.35); }
         }
 
         .symbol.jar-stopped {
@@ -393,13 +399,13 @@
             animation: jarLockStop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
         }
         .symbol.jar-stopped .symbol-badge {
-            filter: drop-shadow(0 0 35px var(--gold)) drop-shadow(0 0 18px #ffffff) !important;
+            filter: drop-shadow(0 0 38px var(--gold)) drop-shadow(0 0 20px #ffffff) !important;
         }
 
         .reel-jar-expanded {
             position: absolute;
             inset: 0;
-            background: radial-gradient(circle at center, #ffe600 0%, #ff7700 60%, rgba(10,5,0,0.95) 100%);
+            background: radial-gradient(circle at center, #ffea00 0%, #ff0033 70%, rgba(15,0,3,0.98) 100%);
             z-index: 80;
             display: flex;
             flex-direction: column;
@@ -438,14 +444,14 @@
             position: absolute;
             top: 10px;
             right: 10px;
-            background: linear-gradient(135deg, #ff0055, #ff00aa);
+            background: linear-gradient(135deg, #ff0033, #d90429);
             color: #fff;
             font-size: 18px;
             font-weight: 900;
             padding: 4px 10px;
             border-radius: 12px;
-            border: 2px solid #fff;
-            box-shadow: 0 0 15px #ff0055;
+            border: 2px solid var(--gold);
+            box-shadow: 0 0 15px #ff0033;
             z-index: 99;
             animation: popMult 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
@@ -469,25 +475,25 @@
             position: absolute;
             bottom: 4px;
             right: 4px;
-            background: linear-gradient(135deg, #ff0055, #ff00aa);
-            color: #fff;
+            background: linear-gradient(135deg, #ff0033, #990000);
+            color: var(--gold);
             font-size: 13px;
             font-weight: 900;
             padding: 2px 7px;
             border-radius: 10px;
-            border: 1px solid #fff;
-            box-shadow: 0 0 12px #ff0055;
+            border: 1px solid var(--gold);
+            box-shadow: 0 0 12px #ff0033;
             z-index: 95;
         }
 
-        .symbol.win-pop-blue .symbol-badge {
-            animation: symbolWinNeonBlue 0.35s infinite alternate ease-in-out;
+        .symbol.win-pop-red .symbol-badge {
+            animation: symbolWinNeonRed 0.35s infinite alternate ease-in-out;
             z-index: 10;
         }
 
-        @keyframes symbolWinNeonBlue {
-            0% { transform: scale(1); filter: drop-shadow(0 0 15px var(--neon-blue)); }
-            100% { transform: scale(1.25); filter: drop-shadow(0 0 35px var(--neon-blue)) brightness(1.7); }
+        @keyframes symbolWinNeonRed {
+            0% { transform: scale(1); filter: drop-shadow(0 0 15px var(--neon-red)); }
+            100% { transform: scale(1.25); filter: drop-shadow(0 0 35px var(--gold)) brightness(1.7); }
         }
 
         .jar-banner {
@@ -495,13 +501,13 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) scale(0);
-            background: linear-gradient(135deg, rgba(0,243,255,0.95), rgba(255,0,85,0.95));
+            background: linear-gradient(135deg, rgba(255,0,51,0.95), rgba(255,223,0,0.95));
             border: 3px solid #fff;
             padding: 16px 30px;
             border-radius: 24px;
             font-weight: 900;
             font-size: 22px;
-            color: #fff;
+            color: #000;
             box-shadow: 0 0 70px var(--gold);
             z-index: 100;
             pointer-events: none;
@@ -514,15 +520,15 @@
             text-align: center;
             margin: 6px 12px;
             padding: 8px 16px;
-            background: rgba(2, 15, 35, 0.85);
-            border: 1.5px solid rgba(0, 243, 255, 0.5);
+            background: rgba(20, 1, 5, 0.88);
+            border: 1.5px solid var(--neon-red);
             border-radius: 18px;
-            box-shadow: 0 0 25px rgba(0, 243, 255, 0.2);
+            box-shadow: 0 0 25px rgba(255, 0, 51, 0.25);
             backdrop-filter: blur(10px);
         }
 
         .line-info {
-            color: var(--neon-blue);
+            color: var(--gold);
             font-size: 13px;
             font-weight: 800;
             min-height: 20px;
@@ -546,8 +552,8 @@
         .bet-chip {
             padding: 6px 12px;
             border-radius: 16px;
-            border: 1.5px solid var(--neon-blue);
-            background: rgba(0, 30, 60, 0.9);
+            border: 1.5px solid var(--neon-red);
+            background: rgba(25, 1, 6, 0.9);
             color: #fff;
             font-size: 12px;
             font-weight: bold;
@@ -555,11 +561,12 @@
             transition: all 0.2s;
         }
         .bet-chip.active {
-            background: var(--neon-blue);
-            color: #000;
-            box-shadow: 0 0 25px var(--neon-blue);
+            background: var(--neon-red);
+            color: #fff;
+            box-shadow: 0 0 25px var(--neon-red);
             font-weight: 900;
             transform: scale(1.08);
+            border-color: var(--gold);
         }
 
         .controls {
@@ -573,9 +580,9 @@
             width: 76px;
             height: 76px;
             border-radius: 50%;
-            border: 3.5px solid var(--neon-blue);
-            background: radial-gradient(circle, rgba(0,243,255,0.95) 0%, rgba(1,5,12,0.99) 100%);
-            box-shadow: 0 0 40px var(--neon-blue);
+            border: 3.5px solid var(--gold);
+            background: radial-gradient(circle, rgba(255,0,51,0.95) 0%, rgba(15,0,3,0.99) 100%);
+            box-shadow: 0 0 40px var(--neon-red);
             color: #fff;
             font-size: 36px;
             display: flex;
@@ -589,8 +596,8 @@
             width: 42px;
             height: 42px;
             border-radius: 50%;
-            border: 1.5px solid var(--neon-blue);
-            background: rgba(1, 5, 12, 0.92);
+            border: 1.5px solid var(--neon-red);
+            background: rgba(12, 1, 4, 0.92);
             color: #fff;
             display: flex;
             justify-content: center;
@@ -607,9 +614,9 @@
         .history-bar {
             display: flex;
             justify-content: space-around;
-            background: rgba(1, 5, 12, 0.99);
-            border-top: 1.5px solid rgba(0, 243, 255, 0.4);
-            border-bottom: 1.5px solid rgba(0, 243, 255, 0.4);
+            background: rgba(12, 1, 4, 0.99);
+            border-top: 1.5px solid rgba(255, 0, 51, 0.4);
+            border-bottom: 1.5px solid rgba(255, 0, 51, 0.4);
             padding: 6px 0;
             font-size: 11px;
             font-weight: bold;
@@ -618,9 +625,9 @@
         .footer-nav {
             display: flex;
             justify-content: space-around;
-            background: #000103;
+            background: #050001;
             padding: 8px 0;
-            border-top: 1px solid rgba(0,243,255,0.25);
+            border-top: 1px solid rgba(255,0,51,0.3);
         }
         .nav-item {
             display: flex;
@@ -628,10 +635,10 @@
             align-items: center;
             gap: 2px;
             font-size: 11px;
-            color: #5d7a97;
+            color: #a8717a;
             cursor: pointer;
         }
-        .nav-item.active { color: var(--neon-blue); }
+        .nav-item.active { color: var(--gold); }
 
         .king-modal {
             display: none;
@@ -646,7 +653,7 @@
         }
 
         .king-box {
-            background: radial-gradient(circle, #0e3058 0%, #020c1b 100%);
+            background: radial-gradient(circle, #3d0008 0%, #080002 100%);
             border: 3px solid var(--gold);
             border-radius: 28px;
             padding: 30px 20px;
@@ -664,7 +671,7 @@
 
         .king-crown { font-size: 65px; margin-bottom: 5px; filter: drop-shadow(0 0 20px var(--gold)); }
         .king-title { font-size: 28px; font-weight: 900; color: var(--gold); text-shadow: 0 0 20px var(--gold); }
-        .king-mult { font-size: 20px; color: var(--neon-blue); font-weight: 900; margin-top: 4px; }
+        .king-mult { font-size: 20px; color: var(--neon-red-bright); font-weight: 900; margin-top: 4px; }
         .king-amount {
             font-size: 42px;
             font-weight: 900;
@@ -685,14 +692,14 @@
             padding: 20px;
         }
         .modal-body {
-            background: #031020;
+            background: #120105;
             border-radius: 22px;
-            border: 2px solid var(--neon-blue);
+            border: 2px solid var(--neon-red);
             padding: 24px;
             text-align: center;
             max-width: 340px;
             width: 100%;
-            box-shadow: 0 0 45px var(--neon-glow);
+            box-shadow: 0 0 45px var(--red-glow);
             max-height: 85vh;
             overflow-y: auto;
         }
@@ -707,7 +714,7 @@
             cursor: pointer;
         }
 
-        /* تنسيق جدول الأرباح داخل النافذة */
+        /* تنسيق جدول الأرباح المحدث داخل النافذة */
         .paytable-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -717,8 +724,8 @@
         }
 
         .paytable-card {
-            background: rgba(0, 243, 255, 0.08);
-            border: 1px solid var(--neon-blue);
+            background: rgba(255, 0, 51, 0.08);
+            border: 1px solid var(--neon-red);
             border-radius: 12px;
             padding: 8px 10px;
             display: flex;
@@ -727,11 +734,11 @@
         }
 
         .paytable-card .sym { font-size: 28px; }
-        .paytable-card .desc { font-size: 11px; color: #a1e5ff; line-height: 1.2; }
+        .paytable-card .desc { font-size: 11px; color: #ffd6dc; line-height: 1.25; }
 
         .bonus-option-card {
-            background: rgba(0, 243, 255, 0.08);
-            border: 1.5px solid var(--neon-blue);
+            background: rgba(255, 0, 51, 0.08);
+            border: 1.5px solid var(--neon-red);
             border-radius: 14px;
             padding: 10px 14px;
             margin: 10px 0;
@@ -759,14 +766,14 @@
             padding: 20px;
         }
         .level-menu-box {
-            background: radial-gradient(circle, #082040 0%, #010a18 100%);
-            border: 2.5px solid var(--neon-blue);
+            background: radial-gradient(circle, #3b0008 0%, #080002 100%);
+            border: 2.5px solid var(--neon-red);
             border-radius: 24px;
             padding: 22px 18px;
             text-align: center;
             max-width: 320px;
             width: 100%;
-            box-shadow: 0 0 45px var(--neon-glow);
+            box-shadow: 0 0 45px var(--red-glow);
             animation: zoomKing 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         .level-btn-group {
@@ -778,8 +785,8 @@
         .level-btn {
             flex: 1;
             padding: 10px 0;
-            background: rgba(0, 243, 255, 0.1);
-            border: 1.5px solid var(--neon-blue);
+            background: rgba(255, 0, 51, 0.1);
+            border: 1.5px solid var(--neon-red);
             color: #fff;
             border-radius: 12px;
             font-weight: 900;
@@ -788,10 +795,10 @@
             transition: all 0.2s;
         }
         .level-btn.active {
-            background: var(--neon-blue);
-            color: #000;
-            box-shadow: 0 0 20px var(--neon-blue);
-            border-color: #fff;
+            background: var(--neon-red);
+            color: #fff;
+            box-shadow: 0 0 20px var(--neon-red);
+            border-color: var(--gold);
         }
 
         @keyframes ultraFastCoinFly {
@@ -811,7 +818,7 @@
             z-index: 9999;
             pointer-events: none;
             font-size: 42px;
-            filter: drop-shadow(0 0 15px #ffdf00) drop-shadow(0 0 25px #ff8800);
+            filter: drop-shadow(0 0 15px #ffdf00) drop-shadow(0 0 25px #ff0033);
             animation: ultraFastCoinFly var(--duration) linear forwards;
             will-change: transform;
         }
@@ -819,11 +826,11 @@
 </head>
 <body>
 
-    <!-- 1. شاشة الدخول الزرقاء النيون الناصعة -->
+    <!-- 1. شاشة الدخول الحمراء النيون اللامعة -->
     <div class="splash-screen" id="splashScreen">
         <div class="splash-box">
             <h1 class="splash-title">GOLDEN LERA</h1>
-            <p class="splash-subtitle">PRO MASTER 2026</p>
+            <p class="splash-subtitle">RED ROYAL MASTER 2026</p>
             <div class="loader-container">
                 <div class="loader-bar" id="loaderBar"></div>
             </div>
@@ -839,12 +846,12 @@
     <!-- 2. الشريط العلوي -->
     <div class="top-bar">
         <button class="buy-bonus-btn" onclick="openBonusModal()">🛒 شراء مكافأة</button>
-        <div class="logo">Golden Lera<br><span style="font-size: 10px; color: #a1e5ff;">Pro Master 2026</span></div>
+        <div class="logo">Golden Lera<br><span style="font-size: 10px; color: var(--gold);">Red Edition 2026</span></div>
         <div class="user-info">
             <div class="avatar" id="u-avatar">U</div>
             <div class="balance-badge">
                 <span id="u-balance">100.00</span>
-                <span style="font-size: 9px;">NSP</span>
+                <span style="font-size: 9px; color: var(--gold);">NSP</span>
             </div>
         </div>
     </div>
@@ -892,7 +899,7 @@
 
     <div class="history-bar">
         <div>🏆 أفضل ربح: <span id="bestWin" style="color: var(--gold);">0.00</span> NSP</div>
-        <div>⏱️ آخر ربح: <span id="lastWin" style="color: var(--neon-blue);">0.00</span> NSP</div>
+        <div>⏱️ آخر ربح: <span id="lastWin" style="color: var(--neon-red-bright);">0.00</span> NSP</div>
     </div>
 
     <div class="footer-nav">
@@ -918,12 +925,12 @@
     <div class="modal" id="bonus-modal">
         <div class="modal-body">
             <div style="font-size: 1.15rem; font-weight: 900; color: var(--gold); margin-bottom: 6px;">🛒 شراء مكافأة الجرات (5 ضربات)</div>
-            <p style="color: #a1e5ff; font-size: 0.8rem; margin-bottom: 12px;">أسعار المكافأة لرهانك الحالي (<span id="bonusBetLabel" style="color:var(--gold); font-weight:bold;">3</span> NSP):</p>
+            <p style="color: #ffd6dc; font-size: 0.8rem; margin-bottom: 12px;">أسعار المكافأة لرهانك الحالي (<span id="bonusBetLabel" style="color:var(--gold); font-weight:bold;">3</span> NSP):</p>
             
             <div class="bonus-option-card" onclick="confirmBuyBonus(1)">
                 <div>
                     <div style="font-weight: 900; color: #fff; font-size: 0.9rem;">🏺 ظهور جرة واحدة</div>
-                    <div style="font-size: 0.75rem; color: #8cf;">ظهور جرة لكل ضربة (5 ضربات)</div>
+                    <div style="font-size: 0.75rem; color: #ffb3c1;">ظهور جرة لكل ضربة (5 ضربات)</div>
                 </div>
                 <div style="color: var(--gold); font-weight: 900; font-size: 0.95rem;" id="price1">150 NSP</div>
             </div>
@@ -931,58 +938,59 @@
             <div class="bonus-option-card" onclick="confirmBuyBonus(2)">
                 <div>
                     <div style="font-weight: 900; color: #fff; font-size: 0.9rem;">🏺🏺 ظهور جرتين</div>
-                    <div style="font-size: 0.75rem; color: #8cf;">ظهور جرتين لكل ضربة (5 ضربات)</div>
+                    <div style="font-size: 0.75rem; color: #ffb3c1;">ظهور جرتين لكل ضربة (5 ضربات)</div>
                 </div>
                 <div style="color: var(--gold); font-weight: 900; font-size: 0.95rem;" id="price2">300 NSP</div>
             </div>
 
             <div class="bonus-option-card" onclick="confirmBuyBonus(3)">
                 <div>
-                    <div style="font-weight: 900; color: #fff; font-size: 0.9rem;">🏺🏺🏺 ظهور 3 جرات</div>
-                    <div style="font-size: 0.75rem; color: #8cf;">3 جرات مع احتمال مضاعف 5x! (5 ضربات)</div>
+                    <div style="font-weight: 900; color: #fff; font-size: 0.9rem;">🏺🏺🏺 ظهور 3 جرات + 5x</div>
+                    <div style="font-size: 0.75rem; color: #ffb3c1;">3 جرات مع احتمال حصري لمضاعف 5x!</div>
                 </div>
                 <div style="color: var(--gold); font-weight: 900; font-size: 0.95rem;" id="price3">750 NSP</div>
             </div>
 
-            <button class="modal-btn" style="background: #ff0055; color: #fff;" onclick="closeBonusModal()">إلغاء</button>
+            <button class="modal-btn" style="background: #d90429; color: #fff;" onclick="closeBonusModal()">إلغاء</button>
         </div>
     </div>
 
-    <!-- نافذة جدول الأرباح الشاملة -->
+    <!-- نافذة جدول الأرباح الشاملة والمحدثة بالكامل -->
     <div class="modal" id="paytable-modal">
         <div class="modal-body">
-            <div style="font-size: 1.2rem; font-weight: 900; color: var(--gold); margin-bottom: 6px;">📖 جدول أرباح الرموز</div>
-            <p style="color: #a1e5ff; font-size: 0.8rem; margin-bottom: 10px;">جميع الخطوط تبدأ من العمود الأول (اليسار) نحو اليمين:</p>
+            <div style="font-size: 1.2rem; font-weight: 900; color: var(--gold); margin-bottom: 6px;">📖 جدول أرباح الرموز الجديدة</div>
+            <p style="color: #ffd6dc; font-size: 0.78rem; margin-bottom: 10px;">تحتسب الأرباح حسب رسومات الخطوط المحددة بدءاً من العمود الأول:</p>
             
             <div class="paytable-grid">
                 <div class="paytable-card">
-                    <div class="sym">7️⃣</div>
-                    <div class="desc"><b>الرمز الخارق 7</b><br>2x = 3x<br>5x = 300x الرهان</div>
+                    <div class="sym">🍋/🍍/🍊</div>
+                    <div class="desc"><b>الليمون/الأناناس/البرتقال</b><br>3x = 1x<br>4x = 1.5x<br>5x = 5x الرهان</div>
                 </div>
                 <div class="paytable-card">
-                    <div class="sym">🏺</div>
-                    <div class="desc"><b>الجرة (Wild)</b><br>بديل لكل الرموز وتضاعف الأرباح (1x-5x)</div>
+                    <div class="sym">🍉/🍇</div>
+                    <div class="desc"><b>البطيخ / العنب</b><br>3x = 4x<br>4x = 5x<br>5x = 8x الرهان</div>
                 </div>
                 <div class="paytable-card">
                     <div class="sym">🔔</div>
-                    <div class="desc"><b>الجرص</b><br>3x = 4x<br>5x = 40x الرهان</div>
+                    <div class="desc"><b>الأجراس</b><br>3x = 2x<br>4x = 3x<br>5x = 6x الرهان</div>
                 </div>
                 <div class="paytable-card">
-                    <div class="sym">🍇</div>
-                    <div class="desc"><b>العنب</b><br>3x = 4x<br>5x = 40x الرهان</div>
+                    <div class="sym">7️⃣</div>
+                    <div class="desc"><b>السبيعات (نادرة جداً)</b><br>2x = 1x | 3x = 3x<br>4x = 5x | 5x = 50x!!</div>
                 </div>
                 <div class="paytable-card">
-                    <div class="sym">🍍</div>
-                    <div class="desc"><b>الأناناس</b><br>3x = 2x<br>5x = 20x الرهان</div>
+                    <div class="sym">⭐</div>
+                    <div class="desc"><b>النجمة (صوت خاص)</b><br>3x متفرقة = 20x الرهان (ظهورها نادر جداً)</div>
                 </div>
                 <div class="paytable-card">
-                    <div class="sym">🍊</div>
-                    <div class="desc"><b>البرتقال/الليمون</b><br>3x = 2x<br>5x = 20x الرهان</div>
+                    <div class="sym">💲</div>
+                    <div class="desc"><b>الدولار (صوت خاص)</b><br>3x متفرقة = 5x الرهان (ظهورها نادر جداً)</div>
                 </div>
             </div>
 
-            <div style="background: rgba(255,223,0,0.1); border: 1px solid var(--gold); border-radius: 12px; padding: 8px; font-size: 11px; color: var(--gold); text-align: right; margin-top: 6px;">
-                💡 <b>جرف الجرات:</b> إذا ظهرت الجرات في العمود الأول والثاني معاً، يتم جرف كامل نقاط الشاشة ومضاعفتها!
+            <div style="background: rgba(255,0,51,0.15); border: 1px solid var(--gold); border-radius: 12px; padding: 8px; font-size: 11px; color: var(--gold); text-align: right; margin-top: 6px;">
+                🏺 <b>الجرة (Wild):</b> تكمل النقص وتضاعف الربح (جرات 5x تظهر فقط عند شراء المكافأة).<br>
+                ✨ <b>الرموز ⭐ و $:</b> قد تظهر بشكل 1 أو 2، لكن لا تحسب أرباح إلا عند اكتمال ثلاثية متفرقة!
             </div>
 
             <button class="modal-btn" onclick="closePaytableModal()">فهمت 🚀</button>
@@ -993,7 +1001,7 @@
     <div class="level-menu-modal" id="levelMenuModal">
         <div class="level-menu-box">
             <div style="font-size: 1.2rem; font-weight: 900; color: var(--gold); margin-bottom: 4px;">🎚️ حدد مستوى الرهان</div>
-            <div style="font-size: 0.8rem; color: var(--neon-blue);">اختر المستويات لتغيير قيم الرهان</div>
+            <div style="font-size: 0.8rem; color: var(--neon-red-bright);">اختر المستويات لتغيير قيم الرهان</div>
             <div class="level-btn-group">
                 <button class="level-btn active" onclick="selectBetLevel(1)">1</button>
                 <button class="level-btn" onclick="selectBetLevel(2)">2</button>
@@ -1001,7 +1009,7 @@
                 <button class="level-btn" onclick="selectBetLevel(4)">4</button>
                 <button class="level-btn" onclick="selectBetLevel(5)">5</button>
             </div>
-            <button class="modal-btn" style="background: var(--neon-blue); color: #000; width: 100%;" onclick="closeLevelMenu()">تم</button>
+            <button class="modal-btn" style="background: var(--neon-red); color: #fff; width: 100%; border: 1px solid var(--gold);" onclick="closeLevelMenu()">تم</button>
         </div>
     </div>
 
@@ -1020,7 +1028,7 @@
     <div class="modal" id="msg-modal">
         <div class="modal-body">
             <div id="modal-status" style="font-size: 1.15rem; font-weight: 900; color: var(--gold); margin-bottom: 8px;">تنبيه</div>
-            <p id="modal-desc" style="color: #a1e5ff; font-size: 0.95rem; line-height: 1.5;"></p>
+            <p id="modal-desc" style="color: #ffd6dc; font-size: 0.95rem; line-height: 1.5;"></p>
             <button class="modal-btn" onclick="closeModal()">استمرار 🚀</button>
         </div>
     </div>
@@ -1102,6 +1110,7 @@
         window.addEventListener('resize', resizeCanvas);
         setTimeout(resizeCanvas, 300);
 
+        /* الأصوات المميزة للأدوات والرموز الجديدة ⭐ و $ */
         function playProSound(type) {
             initAudio();
             if (!audioCtx) return;
@@ -1150,6 +1159,34 @@
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
                 osc.connect(gain); gain.connect(audioCtx.destination);
                 osc.start(now); osc.stop(now + 0.25);
+            }
+            else if (type === 'star_sound') {
+                // صوت النجمة الساحر البراق
+                let freqs = [1046.5, 1318.5, 1567.98, 2093.0];
+                freqs.forEach((f, idx) => {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(f, now + idx * 0.06);
+                    gain.gain.setValueAtTime(0.25, now + idx * 0.06);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.3);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.06); osc.stop(now + idx * 0.06 + 0.3);
+                });
+            }
+            else if (type === 'dollar_sound') {
+                // صوت كاسيرات النقد للدولار
+                let freqs = [800, 1200, 1600];
+                freqs.forEach((f, idx) => {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(f, now + idx * 0.04);
+                    gain.gain.setValueAtTime(0.3, now + idx * 0.04);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.18);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.04); osc.stop(now + idx * 0.04 + 0.18);
+                });
             }
             else if (type === 'win_sound') {
                 let notes = [523.25, 659.25, 783.99, 1046.50];
@@ -1245,31 +1282,37 @@
         }
         loadUserData();
 
-        function generateInitialList(count, allow5x = false) {
-            const commonItems = ['🍇', '🍊', '🍍', '🍋', '🍒', '🔔'];
+        /* توليد قائمة الرموز مع حساب نسب الندرة الدقيقة */
+        function generateInitialList(count, isBuyBonus = false) {
+            const fruits = ['🍉', '🍇', '🍊', '🍍', '🍋', '🔔'];
             let list = [];
             for (let i = 0; i < count; i++) {
                 let rand = Math.random();
                 let sym = '';
                 let mult = 1;
 
-                if (rand < 0.045) { 
-                    sym = '🏺';
+                if (rand < 0.035) { 
+                    sym = '🏺'; // جرة
                     let mRand = Math.random();
-                    if (allow5x) {
-                        if (mRand < 0.40) mult = 1;
-                        else if (mRand < 0.65) mult = 2;
-                        else if (mRand < 0.82) mult = 3;
+                    if (isBuyBonus) {
+                        // مضاعف 5x يظهر حصرياً عند شراء المكافأة
+                        if (mRand < 0.30) mult = 1;
+                        else if (mRand < 0.55) mult = 2;
+                        else if (mRand < 0.75) mult = 3;
                         else mult = 5;
                     } else {
                         if (mRand < 0.50) mult = 1;
                         else if (mRand < 0.80) mult = 2;
                         else mult = 3;
                     }
-                } else if (rand < 0.09) {
-                    sym = '7';
+                } else if (rand < 0.05) {
+                    sym = '7'; // السبيعات 7 (نادرة جداً)
+                } else if (rand < 0.12) {
+                    sym = '⭐'; // النجمة
+                } else if (rand < 0.19) {
+                    sym = '$'; // علامة الدولار
                 } else {
-                    sym = commonItems[Math.floor(Math.random() * commonItems.length)];
+                    sym = fruits[Math.floor(Math.random() * fruits.length)];
                 }
 
                 list.push({ sym: sym, mult: mult });
@@ -1284,12 +1327,14 @@
             const badge = document.createElement('div');
             badge.className = 'symbol-badge';
 
-            if (symObj.sym === '🍇') { div.classList.add('fruit-grape'); badge.innerText = '🍇'; }
+            if (symObj.sym === '🍉') { div.classList.add('fruit-watermelon'); badge.innerText = '🍉'; }
+            else if (symObj.sym === '🍇') { div.classList.add('fruit-grape'); badge.innerText = '🍇'; }
             else if (symObj.sym === '🍊') { div.classList.add('fruit-orange'); badge.innerText = '🍊'; }
             else if (symObj.sym === '🍍') { div.classList.add('fruit-pineapple'); badge.innerText = '🍍'; }
             else if (symObj.sym === '🍋') { div.classList.add('fruit-lemon'); badge.innerText = '🍋'; }
-            else if (symObj.sym === '🍒') { div.classList.add('fruit-cherry'); badge.innerText = '🍒'; }
             else if (symObj.sym === '🔔') { div.classList.add('bell'); badge.innerText = '🔔'; }
+            else if (symObj.sym === '⭐') { div.classList.add('star-sym'); badge.innerText = '⭐'; }
+            else if (symObj.sym === '$') { div.classList.add('dollar-sym'); badge.innerText = '$'; }
             else if (symObj.sym === '7') {
                 div.classList.add('seven');
                 badge.innerText = '7';
@@ -1493,7 +1538,7 @@
             else startSpin();
         }
 
-        /* --- دالة رسم خطوط الفوز التفاعلية على الكانفاس --- */
+        /* --- دالة رسم خطوط الفوز التفاعلية باللون الأحمر والذهبي اللامع --- */
         function drawPayline(winningCoords) {
             if (!paylinesCanvas) return;
             const ctx = paylinesCanvas.getContext('2d');
@@ -1508,8 +1553,8 @@
 
             ctx.beginPath();
             ctx.lineWidth = 4;
-            ctx.strokeStyle = '#00f3ff';
-            ctx.shadowColor = '#00f3ff';
+            ctx.strokeStyle = '#ff0033';
+            ctx.shadowColor = '#ffdf00';
             ctx.shadowBlur = 15;
 
             winningCoords.forEach((coord, i) => {
@@ -1530,19 +1575,47 @@
             ctx.clearRect(0, 0, paylinesCanvas.width, paylinesCanvas.height);
         }
 
-        /* --- دالة احتساب الأرباح المصححة تبدأ حصرياً من العمود الأول (العمود 0 - أقصى اليسار) اتجاهاً لليمين --- */
-        function evaluateWildWinsLocally(grid, bet) {
+        /* --- خوارزمية احتساب الأرباح المحلية مع التطبيق الكامل لجميع رسومات الأشكال والرموز الجديدة --- */
+        function evaluateWinsLocally(grid, bet) {
             let totalWin = 0;
             let winningCoords = [];
             let isDoubleJarHarvest = false;
 
+            // 1. حساب الرموز المتفرقة (Scatter): ⭐ النجمة و $ الدولار
+            let starCoords = [];
+            let dollarCoords = [];
+
+            for (let c = 0; c < reelsCount; c++) {
+                if (grid[c]) {
+                    grid[c].forEach((item, rIdx) => {
+                        if (item.sym === '⭐') starCoords.push([c, rIdx]);
+                        if (item.sym === '$') dollarCoords.push([c, rIdx]);
+                    });
+                }
+            }
+
+            // النجمة: 3 متفرقة أو أكثر = 20 ضعف الرهان
+            if (starCoords.length >= 3) {
+                totalWin += (bet * 20);
+                starCoords.forEach(c => winningCoords.push(c));
+                playProSound('star_sound');
+            }
+
+            // الدولار: 3 متفرقة أو أكثر = 5 أضعاف الرهان
+            if (dollarCoords.length >= 3) {
+                totalWin += (bet * 5);
+                dollarCoords.forEach(c => winningCoords.push(c));
+                playProSound('dollar_sound');
+            }
+
+            // 2. فحص جرف الجرات (إذا ظهرت جرتين في العمودين الأولين)
             let jarInCol0 = grid[0] && grid[0].some(s => s && s.sym === '🏺');
             let jarInCol1 = grid[1] && grid[1].some(s => s && s.sym === '🏺');
 
             if (jarInCol0 && jarInCol1) {
                 isDoubleJarHarvest = true;
                 let harvestPoints = 0;
-                const symValues = { '7': 20, '🔔': 10, '🍇': 8, '🍍': 6, '🍊': 5, '🍋': 4, '🍒': 3, '🏺': 15 };
+                const symValues = { '7': 20, '🔔': 10, '🍉': 8, '🍇': 8, '🍍': 6, '🍊': 5, '🍋': 4, '🏺': 15 };
 
                 for (let c = 0; c < reelsCount; c++) {
                     if (grid[c]) {
@@ -1557,31 +1630,37 @@
                 totalWin += (bet * megaMultiplier);
             }
 
+            /* 3. رسومات الخماسيات والثلاثيات المحددة حصراً بالطلب:
+               - صف مستقيم.
+               - أعلى -> منتصف -> أسفل -> منتصف -> أعلى (V أو W).
+               - أسفل -> منتصف -> أعلى -> منتصف -> أسفل.
+               - أول عمود أعلى -> ثاني/ثالث/رابع منتصف -> خامس أعلى.
+               - خطوط قطرية وثلاثيات متجاورة.
+            */
             const paylines = [
-                [[0,0], [1,0], [2,0], [3,0], [4,0]],
-                [[0,1], [1,1], [2,1], [3,1], [4,1]],
-                [[0,2], [1,2], [2,2], [3,2], [4,2]],
-                [[0,0], [1,1], [2,2], [3,1], [4,0]],
-                [[0,2], [1,1], [2,0], [3,1], [4,2]],
-                [[0,2], [1,2], [2,2], [3,1], [4,0]],
-                [[0,0], [1,0], [2,0], [3,1], [4,2]],
-                [[0,1], [1,0], [2,0], [3,0], [4,1]],
-                [[0,1], [1,2], [2,2], [3,2], [4,1]]
+                [[0,0], [1,0], [2,0], [3,0], [4,0]], // صف 1
+                [[0,1], [1,1], [2,1], [3,1], [4,1]], // صف 2
+                [[0,2], [1,2], [2,2], [3,2], [4,2]], // صف 3
+                [[0,0], [1,1], [2,2], [3,1], [4,0]], // V من الأعلى للأسفل للأعلى
+                [[0,2], [1,1], [2,0], [3,1], [4,2]], // V معكوس من الأسفل للأعلى للأسفل
+                [[0,0], [1,1], [2,1], [3,1], [4,0]], // أعلى -> منتصف -> منتصف -> منتصف -> أعلى
+                [[0,2], [1,1], [2,1], [3,1], [4,2]], // أسفل -> منتصف -> منتصف -> منتصف -> أسفل
+                [[0,0], [1,0], [2,1], [3,2], [4,2]], // قطر هابط
+                [[0,2], [1,2], [2,1], [3,0], [4,0]]  // قطر صاعد
             ];
 
             paylines.forEach(line => {
                 let col0Coord = line[0];
-                if (col0Coord[0] !== 0) return;
-
                 let firstObj = grid[col0Coord[0]] ? grid[col0Coord[0]][col0Coord[1]] : null;
-                if (!firstObj || !firstObj.sym) return;
+                if (!firstObj || !firstObj.sym || firstObj.sym === '⭐' || firstObj.sym === '$') return;
 
                 let targetSym = firstObj.sym;
 
+                // الجرة تكمل النقص (Wild)
                 if (targetSym === '🏺') {
                     for (let i = 1; i < line.length; i++) {
                         let obj = grid[line[i][0]] ? grid[line[i][0]][line[i][1]] : null;
-                        if (obj && obj.sym !== '🏺') {
+                        if (obj && obj.sym !== '🏺' && obj.sym !== '⭐' && obj.sym !== '$') {
                             targetSym = obj.sym;
                             break;
                         }
@@ -1611,20 +1690,27 @@
 
                 let multiplier = 0;
 
-                if (targetSym === '7') {
-                    if (matchCount === 2) multiplier = 3;
-                    else if (matchCount === 3) multiplier = 15;
-                    else if (matchCount === 4) multiplier = 60;
-                    else if (matchCount === 5) multiplier = 300;
-                } 
-                else if (['🍇', '🍊', '🍍', '🍋', '🍒', '🔔', '🏺'].includes(targetSym)) {
-                    if (matchCount === 3) {
-                        multiplier = (targetSym === '🔔' || targetSym === '🍇') ? 4 : 2;
-                    } else if (matchCount === 4) {
-                        multiplier = (targetSym === '🔔' || targetSym === '🍇') ? 12 : 6;
-                    } else if (matchCount === 5) {
-                        multiplier = (targetSym === '🔔' || targetSym === '🍇') ? 40 : 20;
-                    }
+                // نظام الأرباح الجديد الدقيق بالكامل:
+                if (['🍋', '🍍', '🍊'].includes(targetSym)) {
+                    if (matchCount === 3) multiplier = 1;
+                    else if (matchCount === 4) multiplier = 1.5;
+                    else if (matchCount === 5) multiplier = 5;
+                }
+                else if (['🍉', '🍇'].includes(targetSym)) {
+                    if (matchCount === 3) multiplier = 4;
+                    else if (matchCount === 4) multiplier = 5;
+                    else if (matchCount === 5) multiplier = 8;
+                }
+                else if (targetSym === '🔔') {
+                    if (matchCount === 3) multiplier = 2;
+                    else if (matchCount === 4) multiplier = 3;
+                    else if (matchCount === 5) multiplier = 6;
+                }
+                else if (targetSym === '7') {
+                    if (matchCount === 2) multiplier = 1;
+                    else if (matchCount === 3) multiplier = 3;
+                    else if (matchCount === 4) multiplier = 5;
+                    else if (matchCount === 5) multiplier = 50; // خماسية السبيعات النادرة جداً!
                 }
 
                 if (multiplier > 0) {
@@ -1714,7 +1800,7 @@
                     fallbackGrid.push(generateInitialList(3, isBonusRound));
                 }
                 
-                let localWin = evaluateWildWinsLocally(fallbackGrid, currentBet);
+                let localWin = evaluateWinsLocally(fallbackGrid, currentBet);
                 
                 serverResult = {
                     success: true,
@@ -1725,7 +1811,7 @@
                     new_balance: currentBalance - (isBonusRound ? 0 : currentBet) + localWin.winAmount
                 };
             } else {
-                let localEval = evaluateWildWinsLocally(serverResult.grid, currentBet);
+                let localEval = evaluateWinsLocally(serverResult.grid, currentBet);
                 serverResult.winning_coords = serverResult.winning_coords || localEval.winningCoords;
                 serverResult.is_harvest = serverResult.is_harvest !== undefined ? serverResult.is_harvest : localEval.isDoubleJarHarvest;
             }
@@ -1899,7 +1985,7 @@
                     gravity: 1.8,
                     ticks: 80,
                     origin: { y: 0.85 },
-                    colors: ['#ffdf00', '#ffa500', '#ffffff', '#ffd700']
+                    colors: ['#ff0033', '#ffdf00', '#ffffff', '#ffd700']
                 });
             }
         }
@@ -1947,7 +2033,7 @@
             coords.forEach(([reelIdx, rowIdx]) => {
                 let reelStrip = reelStrips[reelIdx];
                 if (reelStrip && reelStrip.children[rowIdx]) {
-                    reelStrip.children[rowIdx].classList.add('win-pop-blue');
+                    reelStrip.children[rowIdx].classList.add('win-pop-red');
                     if (reelStrip.children[rowIdx].classList.contains('fruit-grape') || reelStrip.children[rowIdx].innerText.includes('🏺')) {
                         reelStrip.children[rowIdx].classList.add('jar-stopped');
                     }
@@ -1957,7 +2043,7 @@
 
         function clearShineEffects() {
             document.querySelectorAll('.symbol').forEach(s => {
-                s.classList.remove('win-pop-blue', 'jar-stopped');
+                s.classList.remove('win-pop-red', 'jar-stopped');
             });
         }
 
