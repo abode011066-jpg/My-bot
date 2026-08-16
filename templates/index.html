@@ -244,7 +244,6 @@
             cursor: grab;
         }
 
-        /* تظلِيل ثلاثي الأبعاد فوق وتحت البكرات */
         .slots-frame::before {
             content: '';
             position: absolute;
@@ -262,16 +261,6 @@
             height: 40px;
             background: linear-gradient(0deg, rgba(8,0,2,0.95) 0%, rgba(8,0,2,0) 100%);
             z-index: 15;
-            pointer-events: none;
-        }
-
-        /* قماش الكانفاس لرسم خطوط الربح الحمراء والذهبية */
-        #paylinesCanvas {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 25;
             pointer-events: none;
         }
 
@@ -362,7 +351,6 @@
             transition: all 0.2s ease-out;
         }
 
-        /* تنسيق الرموز الجديدة والمعدلة */
         .symbol.fruit-watermelon .symbol-badge { filter: drop-shadow(0 0 14px #22c55e); }
         .symbol.fruit-grape .symbol-badge { filter: drop-shadow(0 0 14px #a855f7); }
         .symbol.fruit-orange .symbol-badge { filter: drop-shadow(0 0 14px #ff8c00); }
@@ -382,7 +370,6 @@
             filter: drop-shadow(0 0 20px #ff0033);
         }
 
-        /* تحسين مظهر الجرة البراق والفخم مع الحفاظ على وضعية الوقوف */
         .symbol.jar-rare .symbol-badge {
             font-size: 54px;
             filter: drop-shadow(0 0 25px var(--gold)) drop-shadow(0 0 12px #ff1a4d) brightness(1.2);
@@ -714,7 +701,6 @@
             cursor: pointer;
         }
 
-        /* تنسيق جدول الأرباح المحدث داخل النافذة */
         .paytable-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -826,7 +812,7 @@
 </head>
 <body>
 
-    <!-- 1. شاشة الدخول الحمراء النيون اللامعة -->
+    <!-- 1. شاشة الدخول الحمراء (معدلة لتبقى 8 ثوانٍ) -->
     <div class="splash-screen" id="splashScreen">
         <div class="splash-box">
             <h1 class="splash-title">GOLDEN LERA</h1>
@@ -875,10 +861,7 @@
     <!-- 3. إطار اللعبة والبكرات -->
     <div class="game-container">
         <div class="jar-banner" id="jarBanner"><span id="jarWinRating">ربح كبير! 🔥</span><br><span id="jarMultText" style="font-size: 28px; color: var(--gold);">5x</span></div>
-        <div class="slots-frame" id="slotsFrame">
-            <!-- قماش الكانفاس لرسم خطوط الفوز المتحركة -->
-            <canvas id="paylinesCanvas"></canvas>
-        </div>
+        <div class="slots-frame" id="slotsFrame"></div>
     </div>
 
     <div class="info-panel">
@@ -955,11 +938,11 @@
         </div>
     </div>
 
-    <!-- نافذة جدول الأرباح الشاملة والمحدثة بالكامل -->
+    <!-- نافذة جدول الأرباح -->
     <div class="modal" id="paytable-modal">
         <div class="modal-body">
-            <div style="font-size: 1.2rem; font-weight: 900; color: var(--gold); margin-bottom: 6px;">📖 جدول أرباح الرموز الجديدة</div>
-            <p style="color: #ffd6dc; font-size: 0.78rem; margin-bottom: 10px;">تحتسب الأرباح حسب رسومات الخطوط المحددة بدءاً من العمود الأول:</p>
+            <div style="font-size: 1.2rem; font-weight: 900; color: var(--gold); margin-bottom: 6px;">📖 جدول أرباح الرموز</div>
+            <p style="color: #ffd6dc; font-size: 0.78rem; margin-bottom: 10px;">تحتسب الأرباح عند اكتمال خطوط الربح المحددة:</p>
             
             <div class="paytable-grid">
                 <div class="paytable-card">
@@ -989,8 +972,7 @@
             </div>
 
             <div style="background: rgba(255,0,51,0.15); border: 1px solid var(--gold); border-radius: 12px; padding: 8px; font-size: 11px; color: var(--gold); text-align: right; margin-top: 6px;">
-                🏺 <b>الجرة (Wild):</b> تكمل النقص وتضاعف الربح (جرات 5x تظهر فقط عند شراء المكافأة).<br>
-                ✨ <b>الرموز ⭐ و $:</b> قد تظهر بشكل 1 أو 2، لكن لا تحسب أرباح إلا عند اكتمال ثلاثية متفرقة!
+                🏺 <b>الجرة (Wild):</b> تتوسع لتملأ البكرة بالكامل عند ظهور 1 أو 2 أو 3 جرات لإكمال العناصر الناقصة أو زيادتها.
             </div>
 
             <button class="modal-btn" onclick="closePaytableModal()">فهمت 🚀</button>
@@ -1046,18 +1028,19 @@
         function dismissSplashScreen() {
             const splash = document.getElementById('splashScreen');
             if (splash && splash.style.display !== 'none') {
-                splash.style.transition = 'opacity 0.5s ease';
+                splash.style.transition = 'opacity 0.6s ease';
                 splash.style.opacity = '0';
-                setTimeout(() => { splash.style.display = 'none'; }, 500);
+                setTimeout(() => { splash.style.display = 'none'; }, 600);
             }
         }
 
-        const splashWaitTime = Math.floor(Math.random() * (2200 - 1600 + 1)) + 1600;
+        /* تعديل مدة شاشة البداية لتسجيل 8 ثوانٍ دقيقة */
+        const splashWaitTime = 8000; 
         let loadProgress = 0;
         const intervalTime = splashWaitTime / 100;
 
         const loaderInterval = setInterval(() => {
-            loadProgress += 2;
+            loadProgress += 1;
             const loaderBar = document.getElementById('loaderBar');
             if (loaderBar) loaderBar.style.width = loadProgress + '%';
             
@@ -1068,7 +1051,7 @@
             }
         }, intervalTime);
 
-        setTimeout(() => { dismissSplashScreen(); }, 2600);
+        setTimeout(() => { dismissSplashScreen(); }, 8000);
 
         // الجائزة الكبرى المتزايدة
         let jackpotCurrent = 124850.00;
@@ -1099,18 +1082,8 @@
         const reelsCount = 5;
         const reelStrips = [];
         const slotsFrame = document.getElementById('slotsFrame');
-        const paylinesCanvas = document.getElementById('paylinesCanvas');
 
-        function resizeCanvas() {
-            if (paylinesCanvas && slotsFrame) {
-                paylinesCanvas.width = slotsFrame.clientWidth;
-                paylinesCanvas.height = slotsFrame.clientHeight;
-            }
-        }
-        window.addEventListener('resize', resizeCanvas);
-        setTimeout(resizeCanvas, 300);
-
-        /* الأصوات المميزة للأدوات والرموز الجديدة ⭐ و $ */
+        /* أصوات مميزة للأدوات والرموز */
         function playProSound(type) {
             initAudio();
             if (!audioCtx) return;
@@ -1161,7 +1134,6 @@
                 osc.start(now); osc.stop(now + 0.25);
             }
             else if (type === 'star_sound') {
-                // صوت النجمة الساحر البراق
                 let freqs = [1046.5, 1318.5, 1567.98, 2093.0];
                 freqs.forEach((f, idx) => {
                     let osc = audioCtx.createOscillator();
@@ -1175,7 +1147,6 @@
                 });
             }
             else if (type === 'dollar_sound') {
-                // صوت كاسيرات النقد للدولار
                 let freqs = [800, 1200, 1600];
                 freqs.forEach((f, idx) => {
                     let osc = audioCtx.createOscillator();
@@ -1277,12 +1248,12 @@
                     }
                 }
             } catch (e) {
-                console.warn("نموذج افتراضي دون اتصال بالخادم:", e);
+                console.warn("المحاكاة المحلية تعمل بدون اتصال المباشر:", e);
             }
         }
         loadUserData();
 
-        /* توليد قائمة الرموز مع حساب نسب الندرة الدقيقة */
+        /* تحديث احتمالات الظهور لتكون الجرة 1 نادر، 2 نادر جداً، 3 نادر جداً جداً، مع تقليل النجوم والدولار */
         function generateInitialList(count, isBuyBonus = false) {
             const fruits = ['🍉', '🍇', '🍊', '🍍', '🍋', '🔔'];
             let list = [];
@@ -1291,11 +1262,11 @@
                 let sym = '';
                 let mult = 1;
 
-                if (rand < 0.035) { 
-                    sym = '🏺'; // جرة
+                if (rand < 0.012) { 
+                    // جرة 🏺 (احتمالية قليلة جداً لتكون 1 نادر، 2 نادر جداً، 3 نادر جداً جداً جداً)
+                    sym = '🏺';
                     let mRand = Math.random();
                     if (isBuyBonus) {
-                        // مضاعف 5x يظهر حصرياً عند شراء المكافأة
                         if (mRand < 0.30) mult = 1;
                         else if (mRand < 0.55) mult = 2;
                         else if (mRand < 0.75) mult = 3;
@@ -1305,12 +1276,12 @@
                         else if (mRand < 0.80) mult = 2;
                         else mult = 3;
                     }
-                } else if (rand < 0.05) {
+                } else if (rand < 0.022) {
                     sym = '7'; // السبيعات 7 (نادرة جداً)
-                } else if (rand < 0.12) {
-                    sym = '⭐'; // النجمة
-                } else if (rand < 0.19) {
-                    sym = '$'; // علامة الدولار
+                } else if (rand < 0.045) {
+                    sym = '⭐'; // النجمة (تقليل الظهور لتبقى نادرة)
+                } else if (rand < 0.070) {
+                    sym = '$'; // الدولار (تقليل الظهور لتبقى نادرة)
                 } else {
                     sym = fruits[Math.floor(Math.random() * fruits.length)];
                 }
@@ -1538,50 +1509,12 @@
             else startSpin();
         }
 
-        /* --- دالة رسم خطوط الفوز التفاعلية باللون الأحمر والذهبي اللامع --- */
-        function drawPayline(winningCoords) {
-            if (!paylinesCanvas) return;
-            const ctx = paylinesCanvas.getContext('2d');
-            ctx.clearRect(0, 0, paylinesCanvas.width, paylinesCanvas.height);
-
-            if (!winningCoords || winningCoords.length < 2) return;
-
-            resizeCanvas();
-
-            const colWidth = paylinesCanvas.width / reelsCount;
-            const rowHeight = paylinesCanvas.height / 3;
-
-            ctx.beginPath();
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = '#ff0033';
-            ctx.shadowColor = '#ffdf00';
-            ctx.shadowBlur = 15;
-
-            winningCoords.forEach((coord, i) => {
-                const [c, r] = coord;
-                const x = c * colWidth + colWidth / 2;
-                const y = r * rowHeight + rowHeight / 2;
-
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-
-            ctx.stroke();
-        }
-
-        function clearPaylines() {
-            if (!paylinesCanvas) return;
-            const ctx = paylinesCanvas.getContext('2d');
-            ctx.clearRect(0, 0, paylinesCanvas.width, paylinesCanvas.height);
-        }
-
-        /* --- خوارزمية احتساب الأرباح المحلية مع التطبيق الكامل لجميع رسومات الأشكال والرموز الجديدة --- */
+        /* دالة تقييم الأرباح المحلية */
         function evaluateWinsLocally(grid, bet) {
             let totalWin = 0;
             let winningCoords = [];
             let isDoubleJarHarvest = false;
 
-            // 1. حساب الرموز المتفرقة (Scatter): ⭐ النجمة و $ الدولار
             let starCoords = [];
             let dollarCoords = [];
 
@@ -1594,21 +1527,18 @@
                 }
             }
 
-            // النجمة: 3 متفرقة أو أكثر = 20 ضعف الرهان
             if (starCoords.length >= 3) {
                 totalWin += (bet * 20);
                 starCoords.forEach(c => winningCoords.push(c));
                 playProSound('star_sound');
             }
 
-            // الدولار: 3 متفرقة أو أكثر = 5 أضعاف الرهان
             if (dollarCoords.length >= 3) {
                 totalWin += (bet * 5);
                 dollarCoords.forEach(c => winningCoords.push(c));
                 playProSound('dollar_sound');
             }
 
-            // 2. فحص جرف الجرات (إذا ظهرت جرتين في العمودين الأولين)
             let jarInCol0 = grid[0] && grid[0].some(s => s && s.sym === '🏺');
             let jarInCol1 = grid[1] && grid[1].some(s => s && s.sym === '🏺');
 
@@ -1630,23 +1560,16 @@
                 totalWin += (bet * megaMultiplier);
             }
 
-            /* 3. رسومات الخماسيات والثلاثيات المحددة حصراً بالطلب:
-               - صف مستقيم.
-               - أعلى -> منتصف -> أسفل -> منتصف -> أعلى (V أو W).
-               - أسفل -> منتصف -> أعلى -> منتصف -> أسفل.
-               - أول عمود أعلى -> ثاني/ثالث/رابع منتصف -> خامس أعلى.
-               - خطوط قطرية وثلاثيات متجاورة.
-            */
             const paylines = [
-                [[0,0], [1,0], [2,0], [3,0], [4,0]], // صف 1
-                [[0,1], [1,1], [2,1], [3,1], [4,1]], // صف 2
-                [[0,2], [1,2], [2,2], [3,2], [4,2]], // صف 3
-                [[0,0], [1,1], [2,2], [3,1], [4,0]], // V من الأعلى للأسفل للأعلى
-                [[0,2], [1,1], [2,0], [3,1], [4,2]], // V معكوس من الأسفل للأعلى للأسفل
-                [[0,0], [1,1], [2,1], [3,1], [4,0]], // أعلى -> منتصف -> منتصف -> منتصف -> أعلى
-                [[0,2], [1,1], [2,1], [3,1], [4,2]], // أسفل -> منتصف -> منتصف -> منتصف -> أسفل
-                [[0,0], [1,0], [2,1], [3,2], [4,2]], // قطر هابط
-                [[0,2], [1,2], [2,1], [3,0], [4,0]]  // قطر صاعد
+                [[0,0], [1,0], [2,0], [3,0], [4,0]],
+                [[0,1], [1,1], [2,1], [3,1], [4,1]],
+                [[0,2], [1,2], [2,2], [3,2], [4,2]],
+                [[0,0], [1,1], [2,2], [3,1], [4,0]],
+                [[0,2], [1,1], [2,0], [3,1], [4,2]],
+                [[0,0], [1,1], [2,1], [3,1], [4,0]],
+                [[0,2], [1,1], [2,1], [3,1], [4,2]],
+                [[0,0], [1,0], [2,1], [3,2], [4,2]],
+                [[0,2], [1,2], [2,1], [3,0], [4,0]]
             ];
 
             paylines.forEach(line => {
@@ -1656,7 +1579,6 @@
 
                 let targetSym = firstObj.sym;
 
-                // الجرة تكمل النقص (Wild)
                 if (targetSym === '🏺') {
                     for (let i = 1; i < line.length; i++) {
                         let obj = grid[line[i][0]] ? grid[line[i][0]][line[i][1]] : null;
@@ -1690,7 +1612,6 @@
 
                 let multiplier = 0;
 
-                // نظام الأرباح الجديد الدقيق بالكامل:
                 if (['🍋', '🍍', '🍊'].includes(targetSym)) {
                     if (matchCount === 3) multiplier = 1;
                     else if (matchCount === 4) multiplier = 1.5;
@@ -1710,7 +1631,7 @@
                     if (matchCount === 2) multiplier = 1;
                     else if (matchCount === 3) multiplier = 3;
                     else if (matchCount === 4) multiplier = 5;
-                    else if (matchCount === 5) multiplier = 50; // خماسية السبيعات النادرة جداً!
+                    else if (matchCount === 5) multiplier = 50;
                 }
 
                 if (multiplier > 0) {
@@ -1740,7 +1661,6 @@
             }
             closeKingModal();
             clearShineEffects();
-            clearPaylines();
             removeExpandedJars();
             hideJarBanner();
             
@@ -1791,7 +1711,7 @@
                     serverResult = await response.json();
                 }
             } catch (err) {
-                console.warn("السيرفر غير متصل، يتم العمل بوضع المحاكاة المحلية:", err);
+                console.warn("المحاكاة المحلية تعمل تلقائياً:", err);
             }
 
             if (!serverResult || !serverResult.success) {
@@ -1888,6 +1808,25 @@
                 showJarBanner("🏺🏺 ربح جرف ضخم خيالي!", `${winAmount.toFixed(2)} NSP`);
             }
 
+            /* ميكانيكية توسيع الجرات عند ظهور 1 أو 2 أو 3 جرات لتعبئة البكرات إكمال النقص */
+            let jarColumns = [];
+            res.grid.forEach((col, cIdx) => {
+                col.forEach((symObj) => {
+                    if (symObj && symObj.sym === '🏺') {
+                        if (!jarColumns.some(j => j.colIdx === cIdx)) {
+                            jarColumns.push({ colIdx: cIdx, mult: symObj.mult || 1 });
+                        }
+                    }
+                });
+            });
+
+            if (jarColumns.length > 0) {
+                jarColumns.forEach(({ colIdx, mult }) => {
+                    expandJarInReel(colIdx, mult);
+                });
+                await new Promise(r => setTimeout(r, 400));
+            }
+
             if (hasWin) {
                 document.getElementById('lineInfo').innerText = `مبروك! الأرباح: ${winAmount.toFixed(2)} NSP`;
                 document.getElementById('lastWin').innerText = winAmount.toFixed(2);
@@ -1896,17 +1835,6 @@
                 if (winAmount > best) document.getElementById('bestWin').innerText = winAmount.toFixed(2);
 
                 applyShineToWinners(res.winning_coords || []);
-                drawPayline(res.winning_coords || []);
-
-                let winningJarColumns = findWinningJarColumns(res.grid, res.winning_coords || []);
-                if (winningJarColumns.length > 0) {
-                    winningJarColumns.forEach(({ colIdx, mult }) => {
-                        expandJarInReel(colIdx, mult);
-                    });
-
-                    await new Promise(r => setTimeout(r, 400));
-                }
-                
                 triggerUltraFastGoldShower(35);
 
                 let winMultiplier = winAmount / currentBet;
@@ -1920,21 +1848,6 @@
             } else {
                 document.getElementById('lineInfo').innerText = 'حظ أوفر في المحاولة القادمة';
             }
-        }
-
-        function findWinningJarColumns(grid, winningCoords) {
-            let winningJars = [];
-            let processedCols = new Set();
-
-            winningCoords.forEach(([cIdx, rIdx]) => {
-                let symObj = grid[cIdx]?.[rIdx];
-                if (symObj && symObj.sym === '🏺' && !processedCols.has(cIdx)) {
-                    processedCols.add(cIdx);
-                    winningJars.push({ colIdx: cIdx, mult: symObj.mult || 1 });
-                }
-            });
-
-            return winningJars;
         }
 
         function expandJarInReel(colIdx, mult) {
