@@ -963,16 +963,16 @@
                 </div>
                 <div class="paytable-card">
                     <div class="sym">⭐</div>
-                    <div class="desc"><b>النجمة (صوت خاص)</b><br>3x متفرقة = 20x الرهان (ظهورها نادر جداً)</div>
+                    <div class="desc"><b>النجمة (خاصة مستقلة)</b><br>3x متفرقة = 20x الرهان (نادرة جداً ولا تتأثر بالجرة)</div>
                 </div>
                 <div class="paytable-card">
                     <div class="sym">💲</div>
-                    <div class="desc"><b>الدولار (صوت خاص)</b><br>3x متفرقة = 5x الرهان (ظهورها نادر جداً)</div>
+                    <div class="desc"><b>الدولار (خاصة مستقلة)</b><br>3x متفرقة = 5x الرهان (نادرة جداً ولا تتأثر بالجرة)</div>
                 </div>
             </div>
 
             <div style="background: rgba(255,0,51,0.15); border: 1px solid var(--gold); border-radius: 12px; padding: 8px; font-size: 11px; color: var(--gold); text-align: right; margin-top: 6px;">
-                🏺 <b>الجرة (Wild):</b> تتوسع لتملأ البكرة بالكامل عند ظهور 1 أو 2 أو 3 جرات لإكمال العناصر الناقصة أو زيادتها.
+                🏺 <b>الجرة (Wild):</b> تتوسع لتملأ البكرة فقط عند وجود خط ربح محقق لإكمال الرموز الناقصة أو زيادتها.
             </div>
 
             <button class="modal-btn" onclick="closePaytableModal()">فهمت 🚀</button>
@@ -1034,7 +1034,6 @@
             }
         }
 
-        /* تعديل مدة شاشة البداية لتسجيل 8 ثوانٍ دقيقة */
         const splashWaitTime = 8000; 
         let loadProgress = 0;
         const intervalTime = splashWaitTime / 100;
@@ -1053,7 +1052,6 @@
 
         setTimeout(() => { dismissSplashScreen(); }, 8000);
 
-        // الجائزة الكبرى المتزايدة
         let jackpotCurrent = 124850.00;
         setInterval(() => {
             jackpotCurrent += (Math.random() * 0.45);
@@ -1083,7 +1081,6 @@
         const reelStrips = [];
         const slotsFrame = document.getElementById('slotsFrame');
 
-        /* أصوات مميزة للأدوات والرموز */
         function playProSound(type) {
             initAudio();
             if (!audioCtx) return;
@@ -1253,7 +1250,7 @@
         }
         loadUserData();
 
-        /* تحديث احتمالات الظهور لتكون الجرة 1 نادر، 2 نادر جداً، 3 نادر جداً جداً، مع تقليل النجوم والدولار */
+        /* ندرة عالية للنجوم ⭐ والدولار $ مع حفظ خوارزمية الجرة */
         function generateInitialList(count, isBuyBonus = false) {
             const fruits = ['🍉', '🍇', '🍊', '🍍', '🍋', '🔔'];
             let list = [];
@@ -1263,7 +1260,6 @@
                 let mult = 1;
 
                 if (rand < 0.012) { 
-                    // جرة 🏺 (احتمالية قليلة جداً لتكون 1 نادر، 2 نادر جداً، 3 نادر جداً جداً جداً)
                     sym = '🏺';
                     let mRand = Math.random();
                     if (isBuyBonus) {
@@ -1277,11 +1273,11 @@
                         else mult = 3;
                     }
                 } else if (rand < 0.022) {
-                    sym = '7'; // السبيعات 7 (نادرة جداً)
-                } else if (rand < 0.045) {
-                    sym = '⭐'; // النجمة (تقليل الظهور لتبقى نادرة)
-                } else if (rand < 0.070) {
-                    sym = '$'; // الدولار (تقليل الظهور لتبقى نادرة)
+                    sym = '7'; 
+                } else if (rand < 0.032) {
+                    sym = '⭐'; // نادرة جداً
+                } else if (rand < 0.042) {
+                    sym = '$'; // نادرة جداً
                 } else {
                     sym = fruits[Math.floor(Math.random() * fruits.length)];
                 }
@@ -1509,11 +1505,24 @@
             else startSpin();
         }
 
-        /* دالة تقييم الأرباح المحلية */
+        function filterUniqueCoords(coords) {
+            let unique = [];
+            let set = new Set();
+            coords.forEach(c => {
+                let key = `${c[0]}-${c[1]}`;
+                if (!set.has(key)) {
+                    set.add(key);
+                    unique.push(c);
+                }
+            });
+            return unique;
+        }
+
+        /* خوارزمية الربح المحسنة لحماية خصائص الجرة وفصل النجوم/الدولار تماماً */
         function evaluateWinsLocally(grid, bet) {
             let totalWin = 0;
-            let winningCoords = [];
-            let isDoubleJarHarvest = false;
+            let lineWinningCoords = [];
+            let scatterWinningCoords = [];
 
             let starCoords = [];
             let dollarCoords = [];
@@ -1527,21 +1536,24 @@
                 }
             }
 
+            // النجمة والدولار خاضعة للخصائص الخاصة فقط (ظهور 3 فما فوق)
             if (starCoords.length >= 3) {
                 totalWin += (bet * 20);
-                starCoords.forEach(c => winningCoords.push(c));
+                starCoords.forEach(c => scatterWinningCoords.push(c));
                 playProSound('star_sound');
             }
 
             if (dollarCoords.length >= 3) {
                 totalWin += (bet * 5);
-                dollarCoords.forEach(c => winningCoords.push(c));
+                dollarCoords.forEach(c => scatterWinningCoords.push(c));
                 playProSound('dollar_sound');
             }
 
             let jarInCol0 = grid[0] && grid[0].some(s => s && s.sym === '🏺');
             let jarInCol1 = grid[1] && grid[1].some(s => s && s.sym === '🏺');
 
+            let isDoubleJarHarvest = false;
+            // نمط الجرف بالجرار مع استبعاد النجوم والدولار تماماً
             if (jarInCol0 && jarInCol1) {
                 isDoubleJarHarvest = true;
                 let harvestPoints = 0;
@@ -1550,9 +1562,11 @@
                 for (let c = 0; c < reelsCount; c++) {
                     if (grid[c]) {
                         grid[c].forEach((item, rIdx) => {
-                            let val = symValues[item.sym] || 4;
-                            harvestPoints += val;
-                            winningCoords.push([c, rIdx]);
+                            if (item.sym !== '⭐' && item.sym !== '$') {
+                                let val = symValues[item.sym] || 4;
+                                harvestPoints += val;
+                                lineWinningCoords.push([c, rIdx]);
+                            }
                         });
                     }
                 }
@@ -1575,6 +1589,7 @@
             paylines.forEach(line => {
                 let col0Coord = line[0];
                 let firstObj = grid[col0Coord[0]] ? grid[col0Coord[0]][col0Coord[1]] : null;
+                // استبعاد النجمة والدولار من خطوط الربح العادية للجرة
                 if (!firstObj || !firstObj.sym || firstObj.sym === '⭐' || firstObj.sym === '$') return;
 
                 let targetSym = firstObj.sym;
@@ -1636,21 +1651,19 @@
 
                 if (multiplier > 0) {
                     totalWin += (bet * multiplier * jarMultProduct);
-                    currentLineCoords.forEach(coord => winningCoords.push(coord));
+                    currentLineCoords.forEach(coord => lineWinningCoords.push(coord));
                 }
             });
 
-            let uniqueWinningCoords = [];
-            let coordSet = new Set();
-            winningCoords.forEach(c => {
-                let key = `${c[0]}-${c[1]}`;
-                if (!coordSet.has(key)) {
-                    coordSet.add(key);
-                    uniqueWinningCoords.push(c);
-                }
-            });
+            let uniqueAll = filterUniqueCoords([...lineWinningCoords, ...scatterWinningCoords]);
+            let uniqueLine = filterUniqueCoords(lineWinningCoords);
 
-            return { winAmount: totalWin, winningCoords: uniqueWinningCoords, isDoubleJarHarvest: isDoubleJarHarvest };
+            return { 
+                winAmount: totalWin, 
+                winningCoords: uniqueAll, 
+                lineWinningCoords: uniqueLine,
+                isDoubleJarHarvest: isDoubleJarHarvest 
+            };
         }
 
         async function startSpin() {
@@ -1727,12 +1740,14 @@
                     grid: fallbackGrid,
                     win_amount: localWin.winAmount,
                     winning_coords: localWin.winningCoords,
+                    line_winning_coords: localWin.lineWinningCoords,
                     is_harvest: localWin.isDoubleJarHarvest,
                     new_balance: currentBalance - (isBonusRound ? 0 : currentBet) + localWin.winAmount
                 };
             } else {
                 let localEval = evaluateWinsLocally(serverResult.grid, currentBet);
                 serverResult.winning_coords = serverResult.winning_coords || localEval.winningCoords;
+                serverResult.line_winning_coords = serverResult.line_winning_coords || localEval.lineWinningCoords;
                 serverResult.is_harvest = serverResult.is_harvest !== undefined ? serverResult.is_harvest : localEval.isDoubleJarHarvest;
             }
 
@@ -1808,20 +1823,21 @@
                 showJarBanner("🏺🏺 ربح جرف ضخم خيالي!", `${winAmount.toFixed(2)} NSP`);
             }
 
-            /* ميكانيكية توسيع الجرات عند ظهور 1 أو 2 أو 3 جرات لتعبئة البكرات إكمال النقص */
-            let jarColumns = [];
-            res.grid.forEach((col, cIdx) => {
-                col.forEach((symObj) => {
-                    if (symObj && symObj.sym === '🏺') {
-                        if (!jarColumns.some(j => j.colIdx === cIdx)) {
-                            jarColumns.push({ colIdx: cIdx, mult: symObj.mult || 1 });
-                        }
-                    }
-                });
+            /* ميكانيكية توسيع الجرة فقط عند وجود ربح حقيقي في خط الربح */
+            let lineCoords = res.line_winning_coords || res.lineWinningCoords || [];
+            let jarColumnsToExpand = new Set();
+
+            lineCoords.forEach(([c, r]) => {
+                let symObj = res.grid[c] && res.grid[c][r];
+                if (symObj && symObj.sym === '🏺') {
+                    jarColumnsToExpand.add(c);
+                }
             });
 
-            if (jarColumns.length > 0) {
-                jarColumns.forEach(({ colIdx, mult }) => {
+            if (jarColumnsToExpand.size > 0) {
+                jarColumnsToExpand.forEach((colIdx) => {
+                    let jarSym = res.grid[colIdx].find(s => s && s.sym === '🏺');
+                    let mult = jarSym ? (jarSym.mult || 1) : 1;
                     expandJarInReel(colIdx, mult);
                 });
                 await new Promise(r => setTimeout(r, 400));
