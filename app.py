@@ -93,7 +93,7 @@ def update_user_balance(user_id, new_balance):
     conn.commit()
     conn.close()
 
-# --- دالة تقييم شبكة اللعبة وحساب الأرباح بناءً على القواعد الجديدة ---
+# --- دالة تقييم شبكة اللعبة وحساب الأرباح والمضاعفات ---
 def evaluate_grid(grid, bet):
     # خطوط الدفع الـ 9 الرسمية (تبدأ من العامود الأول يساراً)
     paylines = [
@@ -109,20 +109,13 @@ def evaluate_grid(grid, bet):
     ]
 
     jars_count = 0
-    jar_reels = []
-    max_jar_mult = 1
+    jar_positions = {} # تعقب أماكن ومضاعفات الجرات
 
     for r_idx, column in enumerate(grid):
-        for cell in column:
+        for c_idx, cell in enumerate(column):
             if cell["sym"] == "🏺":
                 jars_count += 1
-                if r_idx not in jar_reels:
-                    jar_reels.append(r_idx)
-                if cell.get("mult", 1) > max_jar_mult:
-                    max_jar_mult = cell.get("mult", 1)
-
-    if jars_count >= 3:
-        max_jar_mult = 1
+                jar_positions[(r_idx, c_idx)] = cell.get("mult", 1)
 
     win_amount = 0.0
     winning_coords = []
@@ -132,7 +125,7 @@ def evaluate_grid(grid, bet):
     # 1. تقييم خطوط الدفع
     for line_idx, line in enumerate(paylines):
         first_sym = None
-        # إيجاد أول رمز عادي في الخط لاستخدامه (الجرة 🏺 تعمل كبديل Wild وتكمل السلسلة)
+        # الجرة 🏺 تعمل كبديل Wild لتكمل النقص
         for coord in line:
             sym = grid[coord[0]][coord[1]]["sym"]
             if sym != "🏺" and sym not in ["⭐", "$"]:
@@ -144,9 +137,10 @@ def evaluate_grid(grid, bet):
 
         count = 0
         current_coords = []
+        line_jar_mult = 1
         line_jars = []
 
-        # الاحتساب التتابعي من العامود الأول (اليسار إلى اليمين)
+        # الاحتساب التتابعي من اليسار إلى اليمين
         for coord in line:
             c_sym = grid[coord[0]][coord[1]]["sym"]
             if c_sym == first_sym or c_sym == "🏺":
@@ -154,39 +148,39 @@ def evaluate_grid(grid, bet):
                 current_coords.append(list(coord))
                 if c_sym == "🏺":
                     line_jars.append(coord[0])
+                    # ضرب مضاعف الجرة المشاركة في هذا الخط
+                    line_jar_mult *= jar_positions.get((coord[0], coord[1]), 1)
             else:
                 break
 
-        line_mult = 0.0
+        line_base_mult = 0.0
         
-        # جدول المضاعفات المحدث
+        # جدول المضاعفات الأساسية
         if first_sym == '7':
-            if count == 2: line_mult = 1.0       # ثنائية السبعات = 1x سعر الرهان
-            elif count == 3: line_mult = 2.0     # ثلاثية السبعات = 2x سعر الرهان
-            elif count == 4: line_mult = 6.0     # رباعية السبعات = 6x سعر الرهان
-            elif count >= 5: line_mult = 50.0    # خماسية السبعات = 50x سعر الرهان
+            if count == 2: line_base_mult = 1.0
+            elif count == 3: line_base_mult = 2.0
+            elif count == 4: line_base_mult = 6.0
+            elif count >= 5: line_base_mult = 50.0
 
         elif first_sym in ['🍉', '🍇']:
-            if count == 3: line_mult = 2.0       # ثلاثية بطيخ/عنب = 2x سعر الرهان
-            elif count == 4: line_mult = 4.0     # رباعية = 4x سعر الرهان
-            elif count >= 5: line_mult = 6.0     # خماسية = 6x سعر الرهان
+            if count == 3: line_base_mult = 2.0
+            elif count == 4: line_base_mult = 4.0
+            elif count >= 5: line_base_mult = 6.0
 
         elif first_sym == '🔔':
-            if count == 3: line_mult = 1.5       # ثلاثية أجراس = 1.5x سعر الرهان
-            elif count == 4: line_mult = 3.0     # رباعية = 3x سعر الرهان
-            elif count >= 5: line_mult = 4.0     # خماسية = 4x سعر الرهان
+            if count == 3: line_base_mult = 1.5
+            elif count == 4: line_base_mult = 3.0
+            elif count >= 5: line_base_mult = 4.0
 
         elif first_sym in ['🍋', '🍊', '🍍', '🍒']:
-            if count == 3: line_mult = 1.0       # ثلاثية ليمون/برتقال/أناناس = 1x سعر الرهان
-            elif count == 4: line_mult = 2.0     # رباعية = 2x سعر الرهان
-            elif count >= 5: line_mult = 5.0     # خماسية = 5x سعر الرهان
+            if count == 3: line_base_mult = 1.0
+            elif count == 4: line_base_mult = 2.0
+            elif count >= 5: line_base_mult = 5.0
 
-        if line_mult > 0:
-            if 0 < jars_count < 3:
-                line_mult *= max_jar_mult
-            
-            # احتساب الربح مباشرة كنسبة من قيمة الرهان الكلي
-            win_amount += line_mult * bet
+        if line_base_mult > 0:
+            # احتساب الأرباح مضافاً إليها المضاعف الفعلي للجرات
+            line_win = (line_base_mult * line_jar_mult) * bet
+            win_amount += line_win
             winning_coords.extend(current_coords)
             winning_lines.append(line_idx)
             
@@ -213,10 +207,11 @@ def evaluate_grid(grid, bet):
 
     has_jar = len(winning_jar_reels) > 0
     primary_jar_reel = list(winning_jar_reels)[0] if has_jar else -1
+    max_jar_mult = max(jar_positions.values()) if jar_positions else 1
 
     return win_amount, winning_coords, has_jar, primary_jar_reel, max_jar_mult, jars_count, winning_lines
 
-# --- دالة اختيار الفئة بناءً على إعدادات البوت ---
+# --- دالة اختيار الفئة بناءً على الإعدادات ---
 def choose_tier(is_bonus_buy=False):
     global_mode = get_setting("global_win_mode", "auto")
     if global_mode in ["loss", "win1", "win2", "win5", "win10", "win20", "win50"]:
@@ -243,14 +238,14 @@ def choose_tier(is_bonus_buy=False):
             return "loss"
         return random.choices(tiers, weights=weights)[0]
 
-# --- توليد الشبكة مع التحكم بظهور الرموز وإمكانية الفوز ---
+# --- توليد الشبكة مع ضبط درجات ندرة الجرات حتمياً ---
 def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
-    jar_mults = [1, 2, 3, 5]
+    jar_mults = [2, 3, 5]
 
     for _ in range(300):
         grid = []
         
-        # حزم الرموز: رمز '7' نادراً ما يظهر وحصري للفئات العالية
+        # السبعات محصورة بالأرباح الضخمة فقط
         if tier in ["win20", "win50"]:
             symbols_pool = ['🍋', '🍍', '🍊', '🍒', '🍉', '🔔', '🍇', '⭐', '$', '7']
             weights = [15, 15, 15, 15, 12, 12, 12, 3, 3, 1]
@@ -258,19 +253,21 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
             symbols_pool = ['🍋', '🍍', '🍊', '🍒', '🍉', '🔔', '🍇', '⭐', '$']
             weights = [15, 15, 15, 15, 12, 12, 12, 4, 4]
 
+        # 🎯 ضبط ندرة الجرات وفق الشروط:
         if forced_jars > 0:
-            target_jars = forced_jars
+            target_jars = min(forced_jars, 3) # حصر ظهور 3 جرات بشراء المكافأة فقط
         else:
+            rand = random.random()
             if tier in ["win20", "win50"]:
-                target_jars = random.choice([2, 3])
+                target_jars = 2 if rand < 0.20 else (1 if rand < 0.60 else 0)
             elif tier in ["win5", "win10"]:
-                target_jars = random.choice([1, 2])
+                target_jars = 2 if rand < 0.08 else (1 if rand < 0.35 else 0)
             elif tier in ["win1", "win2"]:
-                target_jars = 1 if random.random() < 0.25 else 0
+                target_jars = 1 if rand < 0.12 else 0
             else:
-                target_jars = 1 if random.random() < 0.05 else 0
+                target_jars = 1 if rand < 0.02 else 0
 
-        jar_reels = random.sample(range(5), min(target_jars, 5)) if target_jars > 0 else []
+        jar_reels = random.sample(range(5), target_jars) if target_jars > 0 else []
 
         for reel_idx in range(5):
             column = []
@@ -279,7 +276,7 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
 
             for row_idx in range(3):
                 if row_idx == jar_row:
-                    mult = 1 if target_jars >= 3 else random.choice(jar_mults)
+                    mult = random.choice(jar_mults)
                     column.append({"sym": "🏺", "mult": mult})
                 else:
                     chosen_sym = random.choices(symbols_pool, weights=weights)[0]
@@ -308,7 +305,7 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
         elif tier == "win50" and win_ratio > 35.0:
             return grid, win_amount, winning_coords, h_jar, j_idx, j_mult, win_lines
 
-    # صمام الأمان لمنع تعليق الخادم في حال عدم مطابقة الفئة
+    # شبكة الأمان
     safe_symbols = ['🍋', '🍍', '🍊', '🍒', '🍉']
     grid = []
     for reel_idx in range(5):
@@ -319,9 +316,9 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
         grid.append(column)
 
     if forced_jars > 0:
-        jar_reels = random.sample(range(5), min(forced_jars, 5))
+        jar_reels = random.sample(range(5), min(forced_jars, 3))
         for r_idx in jar_reels:
-            grid[r_idx][1] = {"sym": "🏺", "mult": 1}
+            grid[r_idx][1] = {"sym": "🏺", "mult": 2}
 
     win_amount, winning_coords, h_jar, j_idx, j_mult, j_count, win_lines = evaluate_grid(grid, bet)
     if max_win_cap is not None and win_amount > max_win_cap:
@@ -434,6 +431,10 @@ def play_spin():
     new_balance = current_balance + win_amount
     update_user_balance(user_id, new_balance)
 
+    # حساب تجميع الشريط (Meter Fill) بناءً على عدد الرموز والجرات الرابحة
+    meter_count = len(winning_coords)
+    meter_fill_percent = min(100, meter_count * 10)
+
     return jsonify({
         "success": True,
         "grid": grid,
@@ -443,7 +444,9 @@ def play_spin():
         "jar_reel_index": jar_reel_index,
         "jar_multiplier": jar_multiplier,
         "winning_coords": winning_coords,
-        "winning_lines": winning_lines
+        "winning_lines": winning_lines,
+        "meter_count": meter_count,
+        "meter_fill": meter_fill_percent
     })
 
 @app.route('/', defaults={'path': ''})
