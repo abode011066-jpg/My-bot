@@ -1250,8 +1250,8 @@
         }
         loadUserData();
 
-        /* ندرة عالية للنجوم ⭐ والدولار $ مع حفظ خوارزمية الجرة */
-        function generateInitialList(count, isBuyBonus = false) {
+        /* ندرة عالية للنجوم ⭐ والدولار $ مع ظهور جرة نادر جداً (0.2%) بالوضع العادي */
+        function generateInitialList(count) {
             const fruits = ['🍉', '🍇', '🍊', '🍍', '🍋', '🔔'];
             let list = [];
             for (let i = 0; i < count; i++) {
@@ -1259,19 +1259,12 @@
                 let sym = '';
                 let mult = 1;
 
-                if (rand < 0.012) { 
+                if (rand < 0.002) { // 0.2% - نادرة جداً
                     sym = '🏺';
                     let mRand = Math.random();
-                    if (isBuyBonus) {
-                        if (mRand < 0.30) mult = 1;
-                        else if (mRand < 0.55) mult = 2;
-                        else if (mRand < 0.75) mult = 3;
-                        else mult = 5;
-                    } else {
-                        if (mRand < 0.50) mult = 1;
-                        else if (mRand < 0.80) mult = 2;
-                        else mult = 3;
-                    }
+                    if (mRand < 0.50) mult = 1;
+                    else if (mRand < 0.80) mult = 2;
+                    else mult = 3;
                 } else if (rand < 0.022) {
                     sym = '7'; 
                 } else if (rand < 0.032) {
@@ -1518,7 +1511,7 @@
             return unique;
         }
 
-        /* خوارزمية الربح المحسنة لحماية خصائص الجرة وفصل النجوم/الدولار تماماً */
+        /* خوارزمية الربح: الجرة تأخذ قيمة الرمز لزيادة العدد أو الإكمال */
         function evaluateWinsLocally(grid, bet) {
             let totalWin = 0;
             let lineWinningCoords = [];
@@ -1553,7 +1546,7 @@
             let jarInCol1 = grid[1] && grid[1].some(s => s && s.sym === '🏺');
 
             let isDoubleJarHarvest = false;
-            // نمط الجرف بالجرار مع استبعاد النجوم والدولار تماماً
+            // نمط الجرف بالجرار (بونص نادر)
             if (jarInCol0 && jarInCol1) {
                 isDoubleJarHarvest = true;
                 let harvestPoints = 0;
@@ -1594,6 +1587,7 @@
 
                 let targetSym = firstObj.sym;
 
+                // إذا بدأ الخط بجرة، تأخذ قيمة أول رمز غير-خاص تجده
                 if (targetSym === '🏺') {
                     for (let i = 1; i < line.length; i++) {
                         let obj = grid[line[i][0]] ? grid[line[i][0]][line[i][1]] : null;
@@ -1649,6 +1643,7 @@
                     else if (matchCount === 5) multiplier = 50;
                 }
 
+                // يتم احتساب الخط الفائز وإضافة إحداثياته (متضمنة الجرة التي أكملت النقص)
                 if (multiplier > 0) {
                     totalWin += (bet * multiplier * jarMultProduct);
                     currentLineCoords.forEach(coord => lineWinningCoords.push(coord));
@@ -1698,7 +1693,7 @@
             let isBonusRound = !!(activeBonus && activeBonus.remaining > 0);
 
             reelStrips.forEach(strip => {
-                populateStrip(strip, generateInitialList(9, isBonusRound));
+                populateStrip(strip, generateInitialList(9));
                 strip.classList.add('spinning');
             });
 
@@ -1727,10 +1722,27 @@
                 console.warn("المحاكاة المحلية تعمل تلقائياً:", err);
             }
 
+            // في حال عدم توفر السيرفر، يتم إنشاء محاكاة دقيقة تضمن حقوق المشتري
             if (!serverResult || !serverResult.success) {
                 let fallbackGrid = [];
                 for (let c = 0; c < reelsCount; c++) {
-                    fallbackGrid.push(generateInitialList(3, isBonusRound));
+                    fallbackGrid.push(generateInitialList(3));
+                }
+                
+                // حقن الجرات بناءً على طلب المكافأة لضمان الظهور
+                if (isBonusRound && requestedJars > 0) {
+                    for(let i = 0; i < requestedJars; i++) {
+                        if(i < reelsCount) {
+                            let randomRow = Math.floor(Math.random() * 3);
+                            let mult = 1;
+                            if (requestedJars === 3) {
+                                mult = Math.random() < 0.3 ? 5 : (Math.floor(Math.random() * 3) + 1);
+                            } else {
+                                mult = Math.random() < 0.5 ? 1 : 2;
+                            }
+                            fallbackGrid[i][randomRow] = {sym: '🏺', mult: mult};
+                        }
+                    }
                 }
                 
                 let localWin = evaluateWinsLocally(fallbackGrid, currentBet);
@@ -1823,13 +1835,14 @@
                 showJarBanner("🏺🏺 ربح جرف ضخم خيالي!", `${winAmount.toFixed(2)} NSP`);
             }
 
-            /* ميكانيكية توسيع الجرة فقط عند وجود ربح حقيقي في خط الربح */
+            /* ميكانيكية توسيع الجرة: تتمدد حصراً عندما تكون متواجدة ضمن إحداثيات خط فائز (أي أكملت نقص أو زادت عدد) */
             let lineCoords = res.line_winning_coords || res.lineWinningCoords || [];
             let jarColumnsToExpand = new Set();
 
             lineCoords.forEach(([c, r]) => {
                 let symObj = res.grid[c] && res.grid[c][r];
                 if (symObj && symObj.sym === '🏺') {
+                    // إذا الجرة تواجدت ضمن الإحداثيات الفائزة، فإنه يحق لها التوسع لتملأ البكرة
                     jarColumnsToExpand.add(c);
                 }
             });
