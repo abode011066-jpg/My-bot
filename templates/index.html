@@ -40,7 +40,7 @@
             position: relative;
         }
 
-        /* --- 1. واجهة الدخول الحمراء والذهبية --- */
+        /* --- 1. واجهة الدخول --- */
         .splash-screen {
             position: fixed;
             inset: 0;
@@ -103,7 +103,7 @@
             transition: width 0.1s linear;
         }
 
-        /* --- 2. الشريط العلوي للجائزة والرصيد --- */
+        /* --- 2. الشريط العلوي --- */
         .jackpot-bar {
             background: linear-gradient(90deg, #1f0005, #4a000c, #1f0005);
             border-bottom: 1.5px solid var(--gold);
@@ -219,13 +219,13 @@
             box-shadow: 0 0 15px var(--gold);
         }
 
-        /* --- 3. إطار البكرات والمؤثرات البصرية --- */
+        /* --- 3. إطار البكرات والمؤثرات --- */
         .game-container {
             position: relative;
             width: 95%;
             max-width: 420px;
             margin: 2px auto 0;
-            perspective: 1000px;
+            perspective: 1200px;
         }
 
         .slots-frame {
@@ -327,14 +327,17 @@
             100% { transform: translateY(0); }
         }
 
+        /* إصلاح حصر الفواكه داخل الأعمدة */
         .symbol {
             height: 80px;
+            width: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
             position: relative;
             flex-shrink: 0;
             padding: 2px;
+            overflow: hidden; /* حصر الفاكهة ومنع امتدادها خارج العمود */
         }
 
         .symbol-badge {
@@ -344,41 +347,43 @@
             align-items: center;
             justify-content: center;
             position: relative;
-            font-size: 48px;
+            font-size: 42px;
             background: transparent;
             border: none;
             box-shadow: none;
             transition: all 0.2s ease-out;
+            max-width: 100%;
+            max-height: 100%;
         }
 
-        .symbol.fruit-watermelon .symbol-badge { filter: drop-shadow(0 0 14px #22c55e); }
-        .symbol.fruit-grape .symbol-badge { filter: drop-shadow(0 0 14px #a855f7); }
-        .symbol.fruit-orange .symbol-badge { filter: drop-shadow(0 0 14px #ff8c00); }
-        .symbol.fruit-pineapple .symbol-badge { filter: drop-shadow(0 0 14px #eab308); }
-        .symbol.fruit-lemon .symbol-badge { filter: drop-shadow(0 0 14px #facc15); }
-        .symbol.bell .symbol-badge { filter: drop-shadow(0 0 16px #ffdf00); }
+        .symbol.fruit-watermelon .symbol-badge { filter: drop-shadow(0 0 10px #22c55e); }
+        .symbol.fruit-grape .symbol-badge { filter: drop-shadow(0 0 10px #a855f7); }
+        .symbol.fruit-orange .symbol-badge { filter: drop-shadow(0 0 10px #ff8c00); }
+        .symbol.fruit-pineapple .symbol-badge { filter: drop-shadow(0 0 10px #eab308); }
+        .symbol.fruit-lemon .symbol-badge { filter: drop-shadow(0 0 10px #facc15); }
+        .symbol.bell .symbol-badge { filter: drop-shadow(0 0 12px #ffdf00); }
         
-        .symbol.star-sym .symbol-badge { filter: drop-shadow(0 0 18px #fbbf24) drop-shadow(0 0 8px #ffffff); }
-        .symbol.dollar-sym .symbol-badge { filter: drop-shadow(0 0 18px #10b981) drop-shadow(0 0 8px #ffffff); font-weight: 900; color: #10b981; font-size: 52px; }
+        .symbol.star-sym .symbol-badge { filter: drop-shadow(0 0 14px #fbbf24); }
+        .symbol.dollar-sym .symbol-badge { filter: drop-shadow(0 0 14px #10b981); font-weight: 900; color: #10b981; font-size: 46px; }
 
         .symbol.seven .symbol-badge {
             color: #ff0033;
-            text-shadow: 0 0 25px #ff0033, 0 0 12px #ffffff;
+            text-shadow: 0 0 18px #ff0033, 0 0 8px #ffffff;
             font-weight: 900;
             font-style: italic;
-            font-size: 55px;
-            filter: drop-shadow(0 0 20px #ff0033);
+            font-size: 48px;
+            filter: drop-shadow(0 0 15px #ff0033);
         }
 
         .symbol.jar-rare .symbol-badge {
-            font-size: 54px;
-            filter: drop-shadow(0 0 25px var(--gold)) drop-shadow(0 0 12px #ff1a4d) brightness(1.2);
+            font-size: 48px;
+            filter: drop-shadow(0 0 20px var(--gold)) drop-shadow(0 0 10px #ff1a4d) brightness(1.2);
             animation: jarGlowPulse 0.9s infinite alternate ease-in-out;
         }
 
         @keyframes jarGlowPulse {
-            0% { transform: scale(0.96); filter: drop-shadow(0 0 18px var(--gold)) drop-shadow(0 0 5px #ff0033); }
-            100% { transform: scale(1.08); filter: drop-shadow(0 0 35px var(--gold)) drop-shadow(0 0 15px #ffb703) brightness(1.35); }
+            0% { transform: scale(0.95); filter: drop-shadow(0 0 12px var(--gold)); }
+            100% { transform: scale(1.05); filter: drop-shadow(0 0 25px var(--gold)) brightness(1.3); }
         }
 
         .symbol.jar-stopped {
@@ -386,35 +391,33 @@
             animation: jarLockStop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
         }
         .symbol.jar-stopped .symbol-badge {
-            filter: drop-shadow(0 0 38px var(--gold)) drop-shadow(0 0 20px #ffffff) !important;
+            filter: drop-shadow(0 0 30px var(--gold)) drop-shadow(0 0 15px #ffffff) !important;
         }
 
+        /* إصلاح تأثير 3D للجرة: الخلفية تظل ثابتة والجرة تخرج بمفردها */
         .reel-jar-expanded {
             position: absolute;
             inset: 0;
-            background: radial-gradient(circle at center, #ffea00 0%, #ff0033 70%, rgba(15,0,3,0.98) 100%);
+            background: transparent; /* الخلفية تظل ثابتة ومكانها لا يتغير */
             z-index: 80;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            border-radius: 8px;
-            border: 2.5px solid var(--gold);
-            box-shadow: 0 0 45px var(--gold-glow);
-            animation: jarExpandColumn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-            overflow: hidden;
-        }
-
-        @keyframes jarExpandColumn {
-            0% { transform: scaleY(0.2) scaleX(0.5); opacity: 0; }
-            100% { transform: scaleY(1) scaleX(1); opacity: 1; }
+            pointer-events: none;
+            perspective: 600px;
         }
 
         .jar-expanded-body {
             font-size: 85px;
-            filter: drop-shadow(0 0 30px #ffffff);
-            animation: jarPulseStay 0.8s infinite alternate ease-in-out;
-            position: relative;
+            filter: drop-shadow(0 10px 25px rgba(0,0,0,0.9)) drop-shadow(0 0 30px var(--gold));
+            animation: jar3DPopOut 0.8s infinite alternate ease-in-out;
+            transform-style: preserve-3d;
+        }
+
+        @keyframes jar3DPopOut {
+            0% { transform: translateZ(20px) scale(0.95); filter: drop-shadow(0 0 20px var(--gold)); }
+            100% { transform: translateZ(80px) scale(1.25); filter: drop-shadow(0 0 45px var(--gold)) brightness(1.3); }
         }
 
         .jar-expanded-body::before {
@@ -453,23 +456,18 @@
             100% { transform: translate(-50%, -18px) scale(1.3); opacity: 1; filter: drop-shadow(0 0 15px var(--gold)); }
         }
 
-        @keyframes jarPulseStay {
-            0% { transform: scale(0.96); }
-            100% { transform: scale(1.06); filter: drop-shadow(0 0 45px var(--gold)); }
-        }
-
         .jar-mult-tag {
             position: absolute;
             bottom: 4px;
             right: 4px;
             background: linear-gradient(135deg, #ff0033, #990000);
             color: var(--gold);
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 900;
-            padding: 2px 7px;
-            border-radius: 10px;
+            padding: 2px 5px;
+            border-radius: 8px;
             border: 1px solid var(--gold);
-            box-shadow: 0 0 12px #ff0033;
+            box-shadow: 0 0 10px #ff0033;
             z-index: 95;
         }
 
@@ -479,8 +477,8 @@
         }
 
         @keyframes symbolWinNeonRed {
-            0% { transform: scale(1); filter: drop-shadow(0 0 15px var(--neon-red)); }
-            100% { transform: scale(1.25); filter: drop-shadow(0 0 35px var(--gold)) brightness(1.7); }
+            0% { transform: scale(1); filter: drop-shadow(0 0 10px var(--neon-red)); }
+            100% { transform: scale(1.2); filter: drop-shadow(0 0 30px var(--gold)) brightness(1.6); }
         }
 
         .jar-banner {
@@ -812,7 +810,6 @@
 </head>
 <body>
 
-    <!-- 1. شاشة الدخول الحمراء (معدلة لتبقى 8 ثوانٍ) -->
     <div class="splash-screen" id="splashScreen">
         <div class="splash-box">
             <h1 class="splash-title">GOLDEN LERA</h1>
@@ -823,13 +820,11 @@
         </div>
     </div>
 
-    <!-- شريط الجائزة الكبرى التفاعلي -->
     <div class="jackpot-bar">
         <span>🏆 MEGA JACKPOT:</span>
         <span id="jackpotAmount">124,850.00 NSP</span>
     </div>
 
-    <!-- 2. الشريط العلوي -->
     <div class="top-bar">
         <button class="buy-bonus-btn" onclick="openBonusModal()">🛒 شراء مكافأة</button>
         <div class="logo">Golden Lera<br><span style="font-size: 10px; color: var(--gold);">Red Edition 2026</span></div>
@@ -858,7 +853,6 @@
         🔥 مكافأة جرات مفعلة: متبقي 5 ضربات
     </div>
 
-    <!-- 3. إطار اللعبة والبكرات -->
     <div class="game-container">
         <div class="jar-banner" id="jarBanner"><span id="jarWinRating">ربح كبير! 🔥</span><br><span id="jarMultText" style="font-size: 28px; color: var(--gold);">5x</span></div>
         <div class="slots-frame" id="slotsFrame"></div>
@@ -904,7 +898,6 @@
         </div>
     </div>
 
-    <!-- النافذة المنبثقة لشراء المكافأة -->
     <div class="modal" id="bonus-modal">
         <div class="modal-body">
             <div style="font-size: 1.15rem; font-weight: 900; color: var(--gold); margin-bottom: 6px;">🛒 شراء مكافأة الجرات (5 ضربات)</div>
@@ -938,7 +931,6 @@
         </div>
     </div>
 
-    <!-- نافذة جدول الأرباح -->
     <div class="modal" id="paytable-modal">
         <div class="modal-body">
             <div style="font-size: 1.2rem; font-weight: 900; color: var(--gold); margin-bottom: 6px;">📖 جدول أرباح الرموز</div>
@@ -972,14 +964,13 @@
             </div>
 
             <div style="background: rgba(255,0,51,0.15); border: 1px solid var(--gold); border-radius: 12px; padding: 8px; font-size: 11px; color: var(--gold); text-align: right; margin-top: 6px;">
-                🏺 <b>الجرة (Wild):</b> تتوسع لتملأ البكرة فقط عند وجود خط ربح محقق لإكمال الرموز الناقصة أو زيادتها.
+                🏺 <b>الجرة (Wild):</b> تكمل الأرباح الناقصة عبر الصفوف والأعمدة وتتوسع فقط عند وجود خط ربحي محقق.
             </div>
 
             <button class="modal-btn" onclick="closePaytableModal()">فهمت 🚀</button>
         </div>
     </div>
 
-    <!-- نافذة مستويات الرهان -->
     <div class="level-menu-modal" id="levelMenuModal">
         <div class="level-menu-box">
             <div style="font-size: 1.2rem; font-weight: 900; color: var(--gold); margin-bottom: 4px;">🎚️ حدد مستوى الرهان</div>
@@ -995,7 +986,6 @@
         </div>
     </div>
 
-    <!-- نافذة الملك احتفال الربح الكبير -->
     <div class="king-modal" id="kingModal">
         <div class="king-box">
             <div class="king-crown">👑</div>
@@ -1006,7 +996,6 @@
         </div>
     </div>
 
-    <!-- نافذة الرسائل العامة -->
     <div class="modal" id="msg-modal">
         <div class="modal-body">
             <div id="modal-status" style="font-size: 1.15rem; font-weight: 900; color: var(--gold); margin-bottom: 8px;">تنبيه</div>
@@ -1245,12 +1234,12 @@
                     }
                 }
             } catch (e) {
-                console.warn("المحاكاة المحلية تعمل بدون اتصال المباشر:", e);
+                console.warn("المحاكاة المحلية تعمل بدون اتصال مباشر:", e);
             }
         }
         loadUserData();
 
-        /* ندرة عالية للنجوم ⭐ والدولار $ مع ظهور جرة نادر جداً (0.2%) بالوضع العادي */
+        /* ندرة الجرة: احتمال ظهور 0.001 (0.1%) للحفاظ على الندرة التامة */
         function generateInitialList(count) {
             const fruits = ['🍉', '🍇', '🍊', '🍍', '🍋', '🔔'];
             let list = [];
@@ -1259,18 +1248,18 @@
                 let sym = '';
                 let mult = 1;
 
-                if (rand < 0.002) { // 0.2% - نادرة جداً
+                if (rand < 0.001) { // نادرة جداً
                     sym = '🏺';
                     let mRand = Math.random();
-                    if (mRand < 0.50) mult = 1;
-                    else if (mRand < 0.80) mult = 2;
+                    if (mRand < 0.60) mult = 1;
+                    else if (mRand < 0.85) mult = 2;
                     else mult = 3;
-                } else if (rand < 0.022) {
+                } else if (rand < 0.02) {
                     sym = '7'; 
-                } else if (rand < 0.032) {
-                    sym = '⭐'; // نادرة جداً
-                } else if (rand < 0.042) {
-                    sym = '$'; // نادرة جداً
+                } else if (rand < 0.03) {
+                    sym = '⭐';
+                } else if (rand < 0.04) {
+                    sym = '$';
                 } else {
                     sym = fruits[Math.floor(Math.random() * fruits.length)];
                 }
@@ -1511,7 +1500,7 @@
             return unique;
         }
 
-        /* خوارزمية الربح: الجرة تأخذ قيمة الرمز لزيادة العدد أو الإكمال */
+        /* خوارزمية الربح المحسّنة: الجرة تكمل السلسلة بين الأعمدة والصفوف دون زيادة أخطاء */
         function evaluateWinsLocally(grid, bet) {
             let totalWin = 0;
             let lineWinningCoords = [];
@@ -1529,7 +1518,6 @@
                 }
             }
 
-            // النجمة والدولار خاضعة للخصائص الخاصة فقط (ظهور 3 فما فوق)
             if (starCoords.length >= 3) {
                 totalWin += (bet * 20);
                 starCoords.forEach(c => scatterWinningCoords.push(c));
@@ -1546,7 +1534,6 @@
             let jarInCol1 = grid[1] && grid[1].some(s => s && s.sym === '🏺');
 
             let isDoubleJarHarvest = false;
-            // نمط الجرف بالجرار (بونص نادر)
             if (jarInCol0 && jarInCol1) {
                 isDoubleJarHarvest = true;
                 let harvestPoints = 0;
@@ -1580,23 +1567,18 @@
             ];
 
             paylines.forEach(line => {
-                let col0Coord = line[0];
-                let firstObj = grid[col0Coord[0]] ? grid[col0Coord[0]][col0Coord[1]] : null;
-                // استبعاد النجمة والدولار من خطوط الربح العادية للجرة
-                if (!firstObj || !firstObj.sym || firstObj.sym === '⭐' || firstObj.sym === '$') return;
-
-                let targetSym = firstObj.sym;
-
-                // إذا بدأ الخط بجرة، تأخذ قيمة أول رمز غير-خاص تجده
-                if (targetSym === '🏺') {
-                    for (let i = 1; i < line.length; i++) {
-                        let obj = grid[line[i][0]] ? grid[line[i][0]][line[i][1]] : null;
-                        if (obj && obj.sym !== '🏺' && obj.sym !== '⭐' && obj.sym !== '$') {
-                            targetSym = obj.sym;
-                            break;
-                        }
+                let targetSym = null;
+                
+                // البحث عن أول رمز فاكهة حقيقي في الخط ليكون هو الرمز المطلوب للربح
+                for (let i = 0; i < line.length; i++) {
+                    let obj = grid[line[i][0]] ? grid[line[i][0]][line[i][1]] : null;
+                    if (obj && obj.sym !== '🏺' && obj.sym !== '⭐' && obj.sym !== '$') {
+                        targetSym = obj.sym;
+                        break;
                     }
                 }
+
+                if (!targetSym) return;
 
                 let matchCount = 0;
                 let currentLineCoords = [];
@@ -1608,6 +1590,7 @@
 
                     if (!cellObj) break;
 
+                    // الجرة تطابق أي فاكهة وتكمل السلسلة
                     if (cellObj.sym === targetSym || cellObj.sym === '🏺') {
                         matchCount++;
                         currentLineCoords.push([c, r]);
@@ -1643,7 +1626,6 @@
                     else if (matchCount === 5) multiplier = 50;
                 }
 
-                // يتم احتساب الخط الفائز وإضافة إحداثياته (متضمنة الجرة التي أكملت النقص)
                 if (multiplier > 0) {
                     totalWin += (bet * multiplier * jarMultProduct);
                     currentLineCoords.forEach(coord => lineWinningCoords.push(coord));
@@ -1722,14 +1704,12 @@
                 console.warn("المحاكاة المحلية تعمل تلقائياً:", err);
             }
 
-            // في حال عدم توفر السيرفر، يتم إنشاء محاكاة دقيقة تضمن حقوق المشتري
             if (!serverResult || !serverResult.success) {
                 let fallbackGrid = [];
                 for (let c = 0; c < reelsCount; c++) {
                     fallbackGrid.push(generateInitialList(3));
                 }
                 
-                // حقن الجرات بناءً على طلب المكافأة لضمان الظهور
                 if (isBonusRound && requestedJars > 0) {
                     for(let i = 0; i < requestedJars; i++) {
                         if(i < reelsCount) {
@@ -1835,14 +1815,13 @@
                 showJarBanner("🏺🏺 ربح جرف ضخم خيالي!", `${winAmount.toFixed(2)} NSP`);
             }
 
-            /* ميكانيكية توسيع الجرة: تتمدد حصراً عندما تكون متواجدة ضمن إحداثيات خط فائز (أي أكملت نقص أو زادت عدد) */
+            /* الجرة تبرز وتتمدد 3D فقط عندما تكمل خط ربح فائز فعلي */
             let lineCoords = res.line_winning_coords || res.lineWinningCoords || [];
             let jarColumnsToExpand = new Set();
 
             lineCoords.forEach(([c, r]) => {
                 let symObj = res.grid[c] && res.grid[c][r];
                 if (symObj && symObj.sym === '🏺') {
-                    // إذا الجرة تواجدت ضمن الإحداثيات الفائزة، فإنه يحق لها التوسع لتملأ البكرة
                     jarColumnsToExpand.add(c);
                 }
             });
