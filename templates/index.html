@@ -238,7 +238,7 @@
             border-radius: 18px;
             padding: 6px;
             position: relative;
-            overflow: hidden;
+            overflow: visible; /* تم السماح بالخروج الجزئي للجرة المكبرة */
             height: 252px;
             touch-action: none;
             cursor: grab;
@@ -252,6 +252,8 @@
             background: linear-gradient(180deg, rgba(8,0,2,0.95) 0%, rgba(8,0,2,0) 100%);
             z-index: 15;
             pointer-events: none;
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
         }
 
         .slots-frame::after {
@@ -262,6 +264,8 @@
             background: linear-gradient(0deg, rgba(8,0,2,0.95) 0%, rgba(8,0,2,0) 100%);
             z-index: 15;
             pointer-events: none;
+            border-bottom-left-radius: 15px;
+            border-bottom-right-radius: 15px;
         }
 
         .slots-frame.shake {
@@ -280,7 +284,7 @@
             height: 240px;
             background: radial-gradient(circle at center, rgba(35, 1, 6, 0.7), rgba(8, 0, 2, 0.95));
             border-radius: 8px;
-            overflow: hidden;
+            overflow: visible;
             position: relative;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.95);
         }
@@ -327,7 +331,6 @@
             100% { transform: translateY(0); }
         }
 
-        /* إصلاح حصر الفواكه داخل الأعمدة */
         .symbol {
             height: 80px;
             width: 100%;
@@ -337,7 +340,7 @@
             position: relative;
             flex-shrink: 0;
             padding: 2px;
-            overflow: hidden; /* حصر الفاكهة ومنع امتدادها خارج العمود */
+            overflow: hidden;
         }
 
         .symbol-badge {
@@ -394,61 +397,87 @@
             filter: drop-shadow(0 0 30px var(--gold)) drop-shadow(0 0 15px #ffffff) !important;
         }
 
-        /* إصلاح تأثير 3D للجرة: الخلفية تظل ثابتة والجرة تخرج بمفردها */
+        /* --- خلفية البكرة المتمددة والتأثير ثلاثي الأبعاد لجرة الربح --- */
         .reel-jar-expanded {
             position: absolute;
             inset: 0;
-            background: transparent; /* الخلفية تظل ثابتة ومكانها لا يتغير */
-            z-index: 80;
+            background: linear-gradient(180deg, rgba(255, 223, 0, 0.45) 0%, rgba(255, 0, 51, 0.8) 50%, rgba(20, 1, 5, 0.95) 100%);
+            border: 2px solid var(--gold);
+            box-shadow: 0 0 35px var(--gold-glow), inset 0 0 25px var(--red-glow);
+            z-index: 120;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             pointer-events: none;
-            perspective: 600px;
+            perspective: 1000px;
+            animation: expandReelBg 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            border-radius: 10px;
+            overflow: visible !important;
+        }
+
+        @keyframes expandReelBg {
+            0% { transform: scaleY(0.1); opacity: 0; }
+            100% { transform: scaleY(1); opacity: 1; }
         }
 
         .jar-expanded-body {
-            font-size: 85px;
-            filter: drop-shadow(0 10px 25px rgba(0,0,0,0.9)) drop-shadow(0 0 30px var(--gold));
+            font-size: 115px; /* تكبير الجرة لتغطي جزء بسيط من البكرات المجاورة */
+            filter: drop-shadow(0 15px 30px rgba(0,0,0,0.95)) 
+                    drop-shadow(0 0 35px var(--gold)) 
+                    drop-shadow(0 0 20px #ff0033);
             animation: jar3DPopOut 0.8s infinite alternate ease-in-out;
             transform-style: preserve-3d;
+            position: relative;
+            z-index: 130;
+            line-height: 1;
+            margin-top: -10px;
         }
 
         @keyframes jar3DPopOut {
-            0% { transform: translateZ(20px) scale(0.95); filter: drop-shadow(0 0 20px var(--gold)); }
-            100% { transform: translateZ(80px) scale(1.25); filter: drop-shadow(0 0 45px var(--gold)) brightness(1.3); }
+            0% { 
+                transform: translateZ(40px) scale(1.15) rotate(-3deg); 
+                filter: drop-shadow(0 0 25px var(--gold)) drop-shadow(0 0 15px #ff0033);
+            }
+            100% { 
+                transform: translateZ(120px) scale(1.6) rotate(3deg); 
+                filter: drop-shadow(0 0 55px var(--gold-glow)) drop-shadow(0 0 30px #ff0033) brightness(1.35);
+            }
         }
 
         .jar-expanded-body::before {
             content: '✨🪙✨';
             position: absolute;
-            top: -35px;
+            top: -40px;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 24px;
+            font-size: 28px;
             animation: goldSpout 0.5s infinite alternate ease-in-out;
+            text-shadow: 0 0 15px var(--gold);
         }
 
         .jar-expanded-mult {
             position: absolute;
             top: 10px;
-            right: 10px;
+            right: 50%;
+            transform: translateX(50%);
             background: linear-gradient(135deg, #ff0033, #d90429);
-            color: #fff;
-            font-size: 18px;
+            color: var(--gold-light);
+            font-size: 20px;
             font-weight: 900;
-            padding: 4px 10px;
-            border-radius: 12px;
+            padding: 4px 14px;
+            border-radius: 16px;
             border: 2px solid var(--gold);
-            box-shadow: 0 0 15px #ff0033;
-            z-index: 99;
-            animation: popMult 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 0 20px #ff0033, 0 0 10px var(--gold);
+            z-index: 140;
+            animation: popMult 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-shadow: 0 0 8px #000;
+            white-space: nowrap;
         }
 
         @keyframes popMult {
-            0% { transform: scale(0); }
-            100% { transform: scale(1); }
+            0% { transform: translateX(50%) scale(0); }
+            100% { transform: translateX(50%) scale(1); }
         }
 
         @keyframes goldSpout {
@@ -494,7 +523,7 @@
             font-size: 22px;
             color: #000;
             box-shadow: 0 0 70px var(--gold);
-            z-index: 100;
+            z-index: 200;
             pointer-events: none;
             transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
             text-align: center;
@@ -964,7 +993,7 @@
             </div>
 
             <div style="background: rgba(255,0,51,0.15); border: 1px solid var(--gold); border-radius: 12px; padding: 8px; font-size: 11px; color: var(--gold); text-align: right; margin-top: 6px;">
-                🏺 <b>الجرة (Wild):</b> تكمل الأرباح الناقصة عبر الصفوف والأعمدة وتتوسع فقط عند وجود خط ربحي محقق.
+                🏺 <b>الجرة (Wild):</b> تكمل أي نقص وتتوسع لخلفية متمددة ثلاثية الأبعاد مضاعفة للربح عند المشاركة في خط رابح. (مضاعف 5x حصري بشراء المكافأة).
             </div>
 
             <button class="modal-btn" onclick="closePaytableModal()">فهمت 🚀</button>
@@ -1239,10 +1268,12 @@
         }
         loadUserData();
 
-        /* ندرة الجرة: احتمال ظهور 0.001 (0.1%) للحفاظ على الندرة التامة */
+        /* ندرة الجرة وحصر مضاعف 5x حصرياً لمكافأة الشراء */
         function generateInitialList(count) {
             const fruits = ['🍉', '🍇', '🍊', '🍍', '🍋', '🔔'];
             let list = [];
+            let isBonusMode = !!(activeBonus && activeBonus.remaining > 0);
+
             for (let i = 0; i < count; i++) {
                 let rand = Math.random();
                 let sym = '';
@@ -1251,9 +1282,16 @@
                 if (rand < 0.001) { // نادرة جداً
                     sym = '🏺';
                     let mRand = Math.random();
-                    if (mRand < 0.60) mult = 1;
-                    else if (mRand < 0.85) mult = 2;
-                    else mult = 3;
+                    if (isBonusMode) { // في شروط المكافأة فقط
+                        if (mRand < 0.45) mult = 1;
+                        else if (mRand < 0.70) mult = 2;
+                        else if (mRand < 0.88) mult = 3;
+                        else mult = 5; // مضاعف 5x يظهر حصرياً في شراء المكافأة
+                    } else { // في اللعب العادي: محظور تماماً ظهور 5x
+                        if (mRand < 0.65) mult = 1;
+                        else if (mRand < 0.88) mult = 2;
+                        else mult = 3; // أقصى حد للعب العادي هو 3x
+                    }
                 } else if (rand < 0.02) {
                     sym = '7'; 
                 } else if (rand < 0.03) {
@@ -1500,7 +1538,7 @@
             return unique;
         }
 
-        /* خوارزمية الربح المحسّنة: الجرة تكمل السلسلة بين الأعمدة والصفوف دون زيادة أخطاء */
+        /* خوارزمية احتساب الأرباح: الجرة تكمل أي نقص وتضاعف الربح إن كانت تحمل مضاعفاً */
         function evaluateWinsLocally(grid, bet) {
             let totalWin = 0;
             let lineWinningCoords = [];
@@ -1569,7 +1607,7 @@
             paylines.forEach(line => {
                 let targetSym = null;
                 
-                // البحث عن أول رمز فاكهة حقيقي في الخط ليكون هو الرمز المطلوب للربح
+                // البحث عن أول رمز فاكهة حقيقي في الخط
                 for (let i = 0; i < line.length; i++) {
                     let obj = grid[line[i][0]] ? grid[line[i][0]][line[i][1]] : null;
                     if (obj && obj.sym !== '🏺' && obj.sym !== '⭐' && obj.sym !== '$') {
@@ -1590,12 +1628,12 @@
 
                     if (!cellObj) break;
 
-                    // الجرة تطابق أي فاكهة وتكمل السلسلة
+                    // الجرة بديلة لأي رمز وتكمل النقص
                     if (cellObj.sym === targetSym || cellObj.sym === '🏺') {
                         matchCount++;
                         currentLineCoords.push([c, r]);
                         if (cellObj.sym === '🏺' && cellObj.mult > 1) {
-                            jarMultProduct *= cellObj.mult;
+                            jarMultProduct *= cellObj.mult; // تضاعف الربح فقط إذا كانت تحتوي على مضاعف
                         }
                     } else {
                         break;
@@ -1716,13 +1754,20 @@
                             let randomRow = Math.floor(Math.random() * 3);
                             let mult = 1;
                             if (requestedJars === 3) {
-                                mult = Math.random() < 0.3 ? 5 : (Math.floor(Math.random() * 3) + 1);
+                                mult = Math.random() < 0.4 ? 5 : (Math.floor(Math.random() * 3) + 1); // 5x حصري هنا
                             } else {
                                 mult = Math.random() < 0.5 ? 1 : 2;
                             }
                             fallbackGrid[i][randomRow] = {sym: '🏺', mult: mult};
                         }
                     }
+                } else {
+                    // للتأكد من خلو اللعب العادي تماماً من مضاعف 5x
+                    fallbackGrid.forEach(col => {
+                        col.forEach(s => {
+                            if (s && s.sym === '🏺' && s.mult === 5) s.mult = 3;
+                        });
+                    });
                 }
                 
                 let localWin = evaluateWinsLocally(fallbackGrid, currentBet);
@@ -1815,7 +1860,7 @@
                 showJarBanner("🏺🏺 ربح جرف ضخم خيالي!", `${winAmount.toFixed(2)} NSP`);
             }
 
-            /* الجرة تبرز وتتمدد 3D فقط عندما تكمل خط ربح فائز فعلي */
+            /* الجرة تتمدد بتأثير خلفية متمددة وتكبر ثلاثية الأبعاد (3D) لتغطي جزء بسيط من البكرات عند كل ربح */
             let lineCoords = res.line_winning_coords || res.lineWinningCoords || [];
             let jarColumnsToExpand = new Set();
 
@@ -1832,7 +1877,7 @@
                     let mult = jarSym ? (jarSym.mult || 1) : 1;
                     expandJarInReel(colIdx, mult);
                 });
-                await new Promise(r => setTimeout(r, 400));
+                await new Promise(r => setTimeout(r, 450));
             }
 
             if (hasWin) {
@@ -1858,6 +1903,7 @@
             }
         }
 
+        /* دالة تمدد الجرة بالخلفية وتكبير 3D المحدثة */
         function expandJarInReel(colIdx, mult) {
             let reel = slotsFrame.children[colIdx];
             if (!reel) return;
