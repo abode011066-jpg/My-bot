@@ -7,6 +7,9 @@ GAME_FOLDER = 'templates'
 app = Flask(__name__, template_folder=GAME_FOLDER, static_folder=GAME_FOLDER)
 DB_NAME = 'database.db'
 
+# مفتاح حماية لوحة التحكم (يمكن ضبطه عبر متغيرات البيئة)
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "my_secure_admin_key_123")
+
 # --- الاتصال بقاعدة البيانات مع تفعيل وضع WAL لمنع التضارب ---
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME, timeout=15)
@@ -16,86 +19,101 @@ def get_db_connection():
 
 # --- تهيئة الجداول والإعدادات الافتراضية ---
 def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY,
-            balance REAL DEFAULT 100.0
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    ''')
-    
-    default_settings = {
-        "bonus_win_rate": "40",
-        "bonus_cap_1": "200",
-        "bonus_cap_2": "500",
-        "bonus_cap_3": "1000",
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
         
-        "chance_loss": "70",
-        "chance_win1": "15",
-        "chance_win2": "10",
-        "chance_win5": "5",
-        "chance_win10": "0",
-        "chance_win20": "0",
-        "chance_win50": "0",
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id TEXT PRIMARY KEY,
+                balance REAL DEFAULT 100.0
+            )
+        ''')
         
-        "maintenance_mode": "off",
-        "global_win_mode": "auto",
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        ''')
         
-        # إعدادات خوارزمية الجرة القابلة للتعديل من البوت
-        "jar_mult_pool": "2,3,5",     # قيم المضاعفات المتاحة للجرة
-        "jar_chance_boost": "off"     # وضع رفع احتمالية ظهور الجرات (on / off)
-    }
-    
-    for k, v in default_settings.items():
-        cursor.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', (k, str(v)))
+        default_settings = {
+            "bonus_win_rate": "40",
+            "bonus_cap_1": "200",
+            "bonus_cap_2": "500",
+            "bonus_cap_3": "1000",
+            
+            "chance_loss": "70",
+            "chance_win1": "15",
+            "chance_win2": "10",
+            "chance_win5": "5",
+            "chance_win10": "0",
+            "chance_win20": "0",
+            "chance_win50": "0",
+            
+            "maintenance_mode": "off",
+            "global_win_mode": "auto",
+            
+            # إعدادات خوارزمية الجرة القابلة للتعديل من البوت
+            "jar_mult_pool": "2,3,5",     # قيم المضاعفات المتاحة للجرة
+            "jar_chance_boost": "off"     # وضع رفع احتمالية ظهور الجرات (on / off)
+        }
         
-    conn.commit()
-    conn.close()
+        for k, v in default_settings.items():
+            cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', (k, str(v)))
+            
+        conn.commit()
 
 init_db()
 
-# --- جلب وتحديث الإعدادات ---
+# --- جلب وتحديث الإعدادات (باستخدام Context Manager للسلامة) ---
 def get_setting(key, default_val=""):
     try:
-        conn = get_db_connection()
-        res = conn.execute('SELECT value FROM settings WHERE key = ?', (key,)).fetchone()
-        conn.close()
-        return res['value'] if res else str(default_val)
+        with get_db_connection() as conn:
+            res = conn.execute('SELECT value FROM settings WHERE key = ?', (key,)).fetchone()
+            return res['value'] if res else str(default_val)
     except Exception:
         return str(default_val)
 
 def set_setting(key, value):
-    conn = get_db_connection()
-    conn.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', (key, str(value)))
-    conn.commit()
-    conn.close()
-
-# --- إدارة رصيد المستخدم ---
-def get_user_balance(user_id):
-    conn = get_db_connection()
-    user = conn.execute('SELECT balance FROM users WHERE user_id = ?', (str(user_id),)).fetchone()
-    if user is None:
-        conn.execute('INSERT INTO users (user_id, balance) VALUES (?, ?)', (str(user_id), 100.0))
+    with get_db_connection() as conn:
+        conn.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', (key, str(value)))
         conn.commit()
-        conn.close()
-        return 100.0
-    conn.close()
-    return float(user['balance'])
 
-def update_user_balance(user_id, new_balance):
-    conn = get_db_connection()
-    conn.execute('UPDATE users SET balance = ? WHERE user_id = ?', (float(new_balance), str(user_id)))
-    conn.commit()
-    conn.close()
+# --- إدارة رصيد المستخدم الآمنة ---
+def get_user_balance(user_id):
+    with get_db_connection() as conn:
+        user = conn.execute('SELECT balance FROM users WHERE user_id = ?', (str(user_id),)).fetchone()
+        if user is None:
+            conn.execute('INSERT INTO users (user_id, balance) VALUES (?, ?)', (str(user_id), 100.0))
+            conn.commit()
+            return 100.0
+        return float(user['balance'])
+
+def deduct_user_balance(user_id, amount):
+    """خصم الرصيد في استعلام ذري واحد لتجنب سباق البيانات Race Condition"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE users 
+            SET balance = balance - ? 
+            WHERE user_id = ? AND balance >= ?
+        ''', (float(amount), str(user_id), float(amount)))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def add_user_balance(user_id, amount):
+    """إضافة ربح إلى رصيد المستخدم"""
+    with get_db_connection() as conn:
+        conn.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (float(amount), str(user_id)))
+        conn.commit()
+
+def set_exact_balance(user_id, amount):
+    """تعديل الرصيد بقيمة مطلقة (لإدارة الأدمن)"""
+    new_bal = max(0.0, float(amount))
+    with get_db_connection() as conn:
+        conn.execute('UPDATE users SET balance = ? WHERE user_id = ?', (new_bal, str(user_id)))
+        conn.commit()
+    return new_bal
 
 # --- دالة تقييم شبكة اللعبة ومنطق الجرة (Wild) ---
 def evaluate_grid(grid, bet):
@@ -126,9 +144,8 @@ def evaluate_grid(grid, bet):
     winning_jar_reels = set()
     winning_lines = []
 
-    # 1. تقييم خطوط الدفع وتطبيق منطق الجرة (تكمل النقص وتزيد العدد)
+    # 1. تقييم خطوط الدفع وتطبيق منطق الجرة
     for line_idx, line in enumerate(paylines):
-        # تحديد الرمز الأساسي للخط (أول رمز ليس جرة ولا Scatter)
         target_sym = None
         for coord in line:
             sym = grid[coord[0]][coord[1]]["sym"]
@@ -136,7 +153,6 @@ def evaluate_grid(grid, bet):
                 target_sym = sym
                 break
 
-        # إذا كان الخط يشتمل على جرات فقط دون رموز أخرى -> يحتسب على أعلى رمز قياسي '7'
         if not target_sym:
             target_sym = "7"
 
@@ -145,7 +161,6 @@ def evaluate_grid(grid, bet):
         line_jar_mult = 1
         line_jars = []
 
-        # الاحتساب التتابعي من اليسار إلى اليمين (الجرة تكمل النقص وتزيد التوالي)
         for coord in line:
             c_sym = grid[coord[0]][coord[1]]["sym"]
             if c_sym == target_sym or c_sym == "🏺":
@@ -153,14 +168,12 @@ def evaluate_grid(grid, bet):
                 current_coords.append(list(coord))
                 if c_sym == "🏺":
                     line_jars.append(coord[0])
-                    # ضرب مضاعفات الجرات المشاركة في هذا الخط تحديداً
                     line_jar_mult *= jar_positions.get((coord[0], coord[1]), 1)
             else:
-                break # انقطاع تسلسل الخط
+                break
 
         line_base_mult = 0.0
         
-        # جدول المضاعفات الأساسية حسب عدد الرموز المتتالية
         if target_sym == '7':
             if count == 2: line_base_mult = 1.0
             elif count == 3: line_base_mult = 2.0
@@ -183,7 +196,6 @@ def evaluate_grid(grid, bet):
             elif count >= 5: line_base_mult = 5.0
 
         if line_base_mult > 0:
-            # احتساب الربح = (المضاعف الأساسي * مضاعف الجرات) * الرهان
             line_win = (line_base_mult * line_jar_mult) * bet
             win_amount += line_win
             winning_coords.extend(current_coords)
@@ -245,7 +257,6 @@ def choose_tier(is_bonus_buy=False):
 
 # --- توليد الشبكة مع ضبط درجات ندرة الجرات وإعدادات البوت ---
 def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
-    # جلب قيم المضاعفات المتاحة من الإعدادات (تُحدد من قبل البوت)
     raw_mults = get_setting("jar_mult_pool", "2,3,5")
     try:
         jar_mults = [int(m.strip()) for m in raw_mults.split(",") if m.strip().isdigit()]
@@ -254,10 +265,9 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
     except Exception:
         jar_mults = [2, 3, 5]
 
-    for _ in range(300):
+    for _ in range(150):
         grid = []
         
-        # السبعات محصورة بالأرباح الضخمة فقط
         if tier in ["win20", "win50"]:
             symbols_pool = ['🍋', '🍍', '🍊', '🍒', '🍉', '🔔', '🍇', '⭐', '$', '7']
             weights = [15, 15, 15, 15, 12, 12, 12, 3, 3, 1]
@@ -265,9 +275,8 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
             symbols_pool = ['🍋', '🍍', '🍊', '🍒', '🍉', '🔔', '🍇', '⭐', '$']
             weights = [15, 15, 15, 15, 12, 12, 12, 4, 4]
 
-        # 🎯 ضبط نسبة ظهور الجرات وفق الشروط وإمكانية تفعيل الرفع من البوت:
         if forced_jars > 0:
-            target_jars = min(forced_jars, 3) # حصر ظهور 3 جرات بشراء المكافأة فقط
+            target_jars = min(forced_jars, 3)
         else:
             rand = random.random()
             boost = get_setting("jar_chance_boost", "off") == "on"
@@ -355,23 +364,33 @@ def get_user():
 
 @app.route('/api/get_settings', methods=['GET', 'POST'])
 def get_settings_api():
-    conn = get_db_connection()
-    rows = conn.execute('SELECT key, value FROM settings').fetchall()
-    conn.close()
+    with get_db_connection() as conn:
+        rows = conn.execute('SELECT key, value FROM settings').fetchall()
     settings_dict = {row['key']: row['value'] for row in rows}
     return jsonify({"success": True, "settings": settings_dict})
 
 @app.route('/api/set_settings', methods=['POST'])
 def set_settings_api():
     data = request.get_json() or {}
+    secret = data.get('admin_secret') or request.headers.get('X-Admin-Secret')
+    
+    # حماية المسار بطلب المفتاح السري للأدمن
+    if secret != ADMIN_SECRET:
+        return jsonify({"success": False, "message": "غير مصرح لك بتعديل الإعدادات"}), 403
+
     for key, value in data.items():
-        if key != 'user_id':
+        if key not in ['user_id', 'admin_secret']:
             set_setting(key, str(value))
     return jsonify({"success": True, "message": "تم تحديث الإعدادات بنجاح"})
 
 @app.route('/api/update_balance', methods=['POST'])
 def update_balance_api():
     data = request.get_json() or {}
+    secret = data.get('admin_secret') or request.headers.get('X-Admin-Secret')
+    
+    if secret != ADMIN_SECRET:
+        return jsonify({"success": False, "message": "غير مصرح لك بالتعديل"}), 403
+
     user_id = data.get('user_id')
     amount = data.get('amount')
     action = data.get('action', 'add')
@@ -379,12 +398,12 @@ def update_balance_api():
     if not user_id or amount is None:
         return jsonify({"success": False, "message": "بيانات غير مكتملة"})
     
-    current = get_user_balance(user_id)
-    new_bal = (current + float(amount)) if action == 'add' else float(amount)
-    if new_bal < 0: 
-        new_bal = 0.0
+    if action == 'add':
+        add_user_balance(user_id, amount)
+    else:
+        set_exact_balance(user_id, amount)
         
-    update_user_balance(user_id, new_bal)
+    new_bal = get_user_balance(user_id)
     return jsonify({"success": True, "new_balance": new_bal})
 
 @app.route('/api/play_spin', methods=['POST'])
@@ -405,7 +424,8 @@ def play_spin():
     except (ValueError, TypeError):
         bet = 3.0
 
-    current_balance = get_user_balance(user_id)
+    # التأكد من وجود الحساب
+    get_user_balance(user_id)
 
     if buy_bonus_jars > 0:
         bonus_cost = data.get('bonus_cost') or data.get('cost')
@@ -417,11 +437,6 @@ def play_spin():
         else:
             spin_cost = bet * 10 * buy_bonus_jars
 
-        if current_balance < spin_cost:
-            return jsonify({"success": False, "message": "رصيدك غير كافٍ لشراء المكافأة!"})
-
-        current_balance -= spin_cost
-
         bet_ratio = bet / 3.0
         cap_key = f"bonus_cap_{buy_bonus_jars}"
         base_cap = float(get_setting(cap_key, 200 * buy_bonus_jars))
@@ -429,12 +444,12 @@ def play_spin():
         tier = choose_tier(is_bonus_buy=True)
     else:
         spin_cost = bet
-        if current_balance < spin_cost:
-            return jsonify({"success": False, "message": "رصيدك غير كافٍ للعب!"})
-
-        current_balance -= spin_cost
         max_win_cap = None
         tier = choose_tier(is_bonus_buy=False)
+
+    # 🛑 خصم الرصيد في استعلام آمن ذري لتجنب الثغرات
+    if not deduct_user_balance(user_id, spin_cost):
+        return jsonify({"success": False, "message": "رصيدك غير كافٍ للعب!"})
 
     grid, win_amount, winning_coords, has_jar, jar_reel_index, jar_multiplier, winning_lines = generate_controlled_grid(
         tier=tier,
@@ -443,8 +458,10 @@ def play_spin():
         max_win_cap=max_win_cap
     )
 
-    new_balance = current_balance + win_amount
-    update_user_balance(user_id, new_balance)
+    if win_amount > 0:
+        add_user_balance(user_id, win_amount)
+
+    new_balance = get_user_balance(user_id)
 
     meter_count = len(winning_coords)
     meter_fill_percent = min(100, meter_count * 10)
