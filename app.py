@@ -48,7 +48,11 @@ def init_db():
         "chance_win50": "0",
         
         "maintenance_mode": "off",
-        "global_win_mode": "auto"
+        "global_win_mode": "auto",
+        
+        # إعدادات خوارزمية الجرة القابلة للتعديل من البوت
+        "jar_mult_pool": "2,3,5",     # قيم المضاعفات المتاحة للجرة
+        "jar_chance_boost": "off"     # وضع رفع احتمالية ظهور الجرات (on / off)
     }
     
     for k, v in default_settings.items():
@@ -93,13 +97,13 @@ def update_user_balance(user_id, new_balance):
     conn.commit()
     conn.close()
 
-# --- دالة تقييم شبكة اللعبة وحساب الأرباح والمضاعفات ---
+# --- دالة تقييم شبكة اللعبة ومنطق الجرة (Wild) ---
 def evaluate_grid(grid, bet):
-    # خطوط الدفع الـ 9 الرسمية (تبدأ من العامود الأول يساراً)
+    # خطوط الدفع الـ 9 الرسمية (تبدأ من العمود الأول يساراً)
     paylines = [
-        [(0,0), (1,0), (2,0), (3,0), (4,0)], # line 1: أفق علوي
-        [(0,1), (1,1), (2,1), (3,1), (4,1)], # line 2: أفق أوسط
-        [(0,2), (1,2), (2,2), (3,2), (4,2)], # line 3: أفق سفلي
+        [(0,0), (1,0), (2,0), (3,0), (4,0)], # line 1: أفقي علوي
+        [(0,1), (1,1), (2,1), (3,1), (4,1)], # line 2: أفقي أوسط
+        [(0,2), (1,2), (2,2), (3,2), (4,2)], # line 3: أفقي سفلي
         [(0,0), (1,1), (2,2), (3,1), (4,0)], # line 4: V هابط
         [(0,2), (1,1), (2,0), (3,1), (4,2)], # line 5: V صاعد
         [(0,1), (1,0), (2,0), (3,0), (4,1)], # line 6: قوس علوي
@@ -109,11 +113,11 @@ def evaluate_grid(grid, bet):
     ]
 
     jars_count = 0
-    jar_positions = {} # تعقب أماكن ومضاعفات الجرات
+    jar_positions = {}
 
     for r_idx, column in enumerate(grid):
         for c_idx, cell in enumerate(column):
-            if cell["sym"] == "🏺":
+            if cell.get("sym") == "🏺":
                 jars_count += 1
                 jar_positions[(r_idx, c_idx)] = cell.get("mult", 1)
 
@@ -122,63 +126,64 @@ def evaluate_grid(grid, bet):
     winning_jar_reels = set()
     winning_lines = []
 
-    # 1. تقييم خطوط الدفع
+    # 1. تقييم خطوط الدفع وتطبيق منطق الجرة (تكمل النقص وتزيد العدد)
     for line_idx, line in enumerate(paylines):
-        first_sym = None
-        # الجرة 🏺 تعمل كبديل Wild لتكمل النقص
+        # تحديد الرمز الأساسي للخط (أول رمز ليس جرة ولا Scatter)
+        target_sym = None
         for coord in line:
             sym = grid[coord[0]][coord[1]]["sym"]
             if sym != "🏺" and sym not in ["⭐", "$"]:
-                first_sym = sym
+                target_sym = sym
                 break
 
-        if not first_sym:
-            first_sym = "7"
+        # إذا كان الخط يشتمل على جرات فقط دون رموز أخرى -> يحتسب على أعلى رمز قياسي '7'
+        if not target_sym:
+            target_sym = "7"
 
         count = 0
         current_coords = []
         line_jar_mult = 1
         line_jars = []
 
-        # الاحتساب التتابعي من اليسار إلى اليمين
+        # الاحتساب التتابعي من اليسار إلى اليمين (الجرة تكمل النقص وتزيد التوالي)
         for coord in line:
             c_sym = grid[coord[0]][coord[1]]["sym"]
-            if c_sym == first_sym or c_sym == "🏺":
+            if c_sym == target_sym or c_sym == "🏺":
                 count += 1
                 current_coords.append(list(coord))
                 if c_sym == "🏺":
                     line_jars.append(coord[0])
-                    # ضرب مضاعف الجرة المشاركة في هذا الخط
+                    # ضرب مضاعفات الجرات المشاركة في هذا الخط تحديداً
                     line_jar_mult *= jar_positions.get((coord[0], coord[1]), 1)
             else:
-                break
+                break # انقطاع تسلسل الخط
 
         line_base_mult = 0.0
         
-        # جدول المضاعفات الأساسية
-        if first_sym == '7':
+        # جدول المضاعفات الأساسية حسب عدد الرموز المتتالية
+        if target_sym == '7':
             if count == 2: line_base_mult = 1.0
             elif count == 3: line_base_mult = 2.0
             elif count == 4: line_base_mult = 6.0
             elif count >= 5: line_base_mult = 50.0
 
-        elif first_sym in ['🍉', '🍇']:
+        elif target_sym in ['🍉', '🍇']:
             if count == 3: line_base_mult = 2.0
             elif count == 4: line_base_mult = 4.0
             elif count >= 5: line_base_mult = 6.0
 
-        elif first_sym == '🔔':
+        elif target_sym == '🔔':
             if count == 3: line_base_mult = 1.5
             elif count == 4: line_base_mult = 3.0
             elif count >= 5: line_base_mult = 4.0
 
-        elif first_sym in ['🍋', '🍊', '🍍', '🍒']:
+        elif target_sym in ['🍋', '🍊', '🍍', '🍒']:
             if count == 3: line_base_mult = 1.0
             elif count == 4: line_base_mult = 2.0
             elif count >= 5: line_base_mult = 5.0
 
         if line_base_mult > 0:
-            # احتساب الأرباح مضافاً إليها المضاعف الفعلي للجرات
+            # احتساب الربح = (المضاعف الأساسي * مضاعف الجرات) * الرهان
             line_win = (line_base_mult * line_jar_mult) * bet
             win_amount += line_win
             winning_coords.extend(current_coords)
@@ -205,8 +210,8 @@ def evaluate_grid(grid, bet):
         win_amount += bet * (3.0 if len(dollar_coords) == 3 else 15.0)
         winning_coords.extend(dollar_coords)
 
-    has_jar = len(winning_jar_reels) > 0
-    primary_jar_reel = list(winning_jar_reels)[0] if has_jar else -1
+    has_jar = len(winning_jar_reels) > 0 or jars_count > 0
+    primary_jar_reel = list(winning_jar_reels)[0] if winning_jar_reels else (-1 if jars_count == 0 else list(jar_positions.keys())[0][0])
     max_jar_mult = max(jar_positions.values()) if jar_positions else 1
 
     return win_amount, winning_coords, has_jar, primary_jar_reel, max_jar_mult, jars_count, winning_lines
@@ -238,9 +243,16 @@ def choose_tier(is_bonus_buy=False):
             return "loss"
         return random.choices(tiers, weights=weights)[0]
 
-# --- توليد الشبكة مع ضبط درجات ندرة الجرات حتمياً ---
+# --- توليد الشبكة مع ضبط درجات ندرة الجرات وإعدادات البوت ---
 def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
-    jar_mults = [2, 3, 5]
+    # جلب قيم المضاعفات المتاحة من الإعدادات (تُحدد من قبل البوت)
+    raw_mults = get_setting("jar_mult_pool", "2,3,5")
+    try:
+        jar_mults = [int(m.strip()) for m in raw_mults.split(",") if m.strip().isdigit()]
+        if not jar_mults:
+            jar_mults = [2, 3, 5]
+    except Exception:
+        jar_mults = [2, 3, 5]
 
     for _ in range(300):
         grid = []
@@ -253,12 +265,15 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
             symbols_pool = ['🍋', '🍍', '🍊', '🍒', '🍉', '🔔', '🍇', '⭐', '$']
             weights = [15, 15, 15, 15, 12, 12, 12, 4, 4]
 
-        # 🎯 ضبط ندرة الجرات وفق الشروط:
+        # 🎯 ضبط نسبة ظهور الجرات وفق الشروط وإمكانية تفعيل الرفع من البوت:
         if forced_jars > 0:
             target_jars = min(forced_jars, 3) # حصر ظهور 3 جرات بشراء المكافأة فقط
         else:
             rand = random.random()
-            if tier in ["win20", "win50"]:
+            boost = get_setting("jar_chance_boost", "off") == "on"
+            if boost:
+                target_jars = 2 if rand < 0.30 else (1 if rand < 0.70 else 0)
+            elif tier in ["win20", "win50"]:
                 target_jars = 2 if rand < 0.20 else (1 if rand < 0.60 else 0)
             elif tier in ["win5", "win10"]:
                 target_jars = 2 if rand < 0.08 else (1 if rand < 0.35 else 0)
@@ -318,7 +333,7 @@ def generate_controlled_grid(tier, bet, forced_jars=0, max_win_cap=None):
     if forced_jars > 0:
         jar_reels = random.sample(range(5), min(forced_jars, 3))
         for r_idx in jar_reels:
-            grid[r_idx][1] = {"sym": "🏺", "mult": 2}
+            grid[r_idx][1] = {"sym": "🏺", "mult": random.choice(jar_mults)}
 
     win_amount, winning_coords, h_jar, j_idx, j_mult, j_count, win_lines = evaluate_grid(grid, bet)
     if max_win_cap is not None and win_amount > max_win_cap:
@@ -431,7 +446,6 @@ def play_spin():
     new_balance = current_balance + win_amount
     update_user_balance(user_id, new_balance)
 
-    # حساب تجميع الشريط (Meter Fill) بناءً على عدد الرموز والجرات الرابحة
     meter_count = len(winning_coords)
     meter_fill_percent = min(100, meter_count * 10)
 
