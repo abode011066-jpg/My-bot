@@ -18,19 +18,27 @@ from groq import Groq
 # ==================== الإعدادات الأساسية ====================
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN", "7999371850:AAFzy0dsBUuWyZ1Md_Kgj2EMH-N090KbIM0")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-ADMIN_ID = 8577656131
+MAIN_ADMIN_ID = 8577656131
 
 logging.basicConfig(level=logging.INFO)
 
 # إعداد عميل Groq الذكي
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# ذاكرة مؤقتة لرسائل الكروبات (لأجل ميزة القاضي) والقصص التفاعلية
+# ذاكرة مؤقتة لرسائل الكروبات والقصص التفاعلية
 group_message_logs = defaultdict(lambda: deque(maxlen=10))
 story_sessions = defaultdict(lambda: {"active": False, "lines": [], "users": []})
 
-# حالات المحادثات الخاصة بالاعترافات والترخيص
-WAITING_CONFESSION_GROUP, WAITING_CONFESSION_TEXT, WAITING_GRANT_GROUP_ID, WAITING_GRANT_DAYS = range(4)
+# حالات المحادثات المتعددة (Conversation Handler States)
+(
+    WAITING_CONFESSION_TEXT,
+    WAITING_GRANT_GROUP_ID,
+    WAITING_GRANT_DAYS,
+    WAITING_ADD_ADMIN_ID,
+    WAITING_GROUP_MSG_TARGET,
+    WAITING_GROUP_MSG_TEXT,
+    WAITING_FORCE_CHANNEL,
+) = range(7)
 
 # ==================== قاعدة البيانات (SQLite) ====================
 def init_db():
@@ -44,7 +52,7 @@ def init_db():
             expire_at TEXT
         )
     """)
-    # جدول الاعترافات المجهولة (لأجل لوحة الإدارة)
+    # جدول الاعترافات المجهولة
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS confessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,12 +64,67 @@ def init_db():
             created_at TEXT
         )
     """)
+    # جدول الأدمنية الإضافيين
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admins (
+            user_id INTEGER PRIMARY KEY,
+            added_at TEXT
+        )
+    """)
+    # جدول الإعدادات العامة (قناة الاشتراك الإجباري وغيرها)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
 init_db()
 
-# ==================== وظائف مساعدة لقاعدة البيانات ====================
+# ==================== وظائف قاعدة البيانات والصلاحيات ====================
+def is_admin(user_id: int) -> bool:
+    if user_id == MAIN_ADMIN_ID:
+        return True
+    conn = sqlite3.connect("bot_system.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM admins WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+def add_admin_db(user_id: int):
+    conn = sqlite3.connect("bot_system.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO admins (user_id, added_at) VALUES (?, ?)", 
+                   (user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
+    conn.commit()
+    conn.close()
+
+def get_all_admins():
+    conn = sqlite3.connect("bot_system.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, added_at FROM admins")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def set_setting(key: str, value: str):
+    conn = sqlite3.connect("bot_system.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+    conn.commit()
+    conn.close()
+
+def get_setting(key: str) -> str:
+    conn = sqlite3.connect("bot_system.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else ""
+
 def is_group_active(group_id: int) -> bool:
     conn = sqlite3.connect("bot_system.db")
     cursor = conn.cursor()
@@ -125,6 +188,19 @@ def get_confessions_log():
     conn.close()
     return rows
 
+# ==================== التحقق من الاشتراك الإجباري ====================
+async def check_force_sub(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    channel = get_setting("force_channel")
+    if not channel:
+        return True
+    try:
+        member = await context.bot.get_chat_member(chat_id=channel, user_id=user_id)
+        if member.status in ["creator", "administrator", "member"]:
+            return True
+    except Exception:
+        pass
+    return False
+
 # ==================== توليد الذكاء الاصطناعي باللهجة السورية (Groq) ====================
 async def generate_syrian_ai(prompt: str) -> str:
     if not groq_client:
@@ -158,11 +234,18 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
 
+    # فحص الاشتراك الإجباري
+    if not await check_force_sub(user.id, context):
+        channel = get_setting("force_channel")
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("📢 اشترك بالقناة هنا", url=f"https://t.me/{channel.replace('@', '')}")]])
+        await update.message.reply_text(f"⚠️ لاستخدام البوت يرجى الاشتراك بقناة البوت أولاً:\n{channel}", reply_markup=btn)
+        return
+
     if chat.type == "private":
         keyboard = [
             [InlineKeyboardButton("🕵️ إرسال اعتراف مجهول", callback_data="start_confession")]
         ]
-        if user.id == ADMIN_ID:
+        if is_admin(user.id):
             keyboard.append([InlineKeyboardButton("⚙️ لوحة الإدارة", callback_data="admin_panel")])
             
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -279,7 +362,7 @@ async def add_story_line(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🔥 **النتيجة النهائية لقصة الجروب المجنونة:**\n\n{final_story}")
         session["active"] = False
 
-# ==================== الميزة 3: الاعترافات المجهولة (مع لوحة التحكم) ====================
+# ==================== الميزة 3: الاعترافات المجهولة ====================
 async def start_confession_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -338,26 +421,30 @@ async def receive_confession_text(update: Update, context: ContextTypes.DEFAULT_
 # ==================== لوحة الإدارة الكاملة (Admin Panel) ====================
 async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
+    if not is_admin(user_id):
         return
 
-    text = "🛠 **لوحة إدارة البوت الكاملة (المدير):**\nاختر من الأزرار أدناه للتحكم:"
+    text = "🛠 **لوحة إدارة البوت الكاملة (المدير/الأدمن):**\nاختر من الأزرار أدناه للتحكم الشامل:"
     keyboard = [
-        [InlineKeyboardButton("➕ تفعيل كروب جديد", callback_data="admin_grant")],
-        [InlineKeyboardButton("📋 الكروبات المفعلة", callback_data="admin_list_groups")],
-        [InlineKeyboardButton("🕵️ سجل الاعترافات المجهولة", callback_data="admin_confessions_log")],
-        [InlineKeyboardButton("📖 دليل استخدام الميزات", callback_data="admin_help_guide")]
+        [InlineKeyboardButton("➕ تفعيل كروب جديد", callback_data="admin_grant"), InlineKeyboardButton("📋 الكروبات المفعلة", callback_data="admin_list_groups")],
+        [InlineKeyboardButton("📢 رسالة خاصة لكروب", callback_data="admin_msg_group_start"), InlineKeyboardButton("🚪 مغادرة كروب", callback_data="admin_leave_start")],
+        [InlineKeyboardButton("👑 إدارة الأدمنية", callback_data="admin_manage_admins"), InlineKeyboardButton("📢 الاشتراك الإجباري", callback_data="admin_force_sub_start")],
+        [InlineKeyboardButton("🕵️ سجل الاعترافات", callback_data="admin_confessions_log"), InlineKeyboardButton("📜 جميع الأوامر والدليل", callback_data="admin_help_guide")]
     ]
     
+    reply_markup = InlineKeyboardMarkup(keyboard)
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 async def admin_buttons_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
     await query.answer()
+
+    if not is_admin(query.from_user.id):
+        return
 
     if data == "admin_panel":
         await admin_panel_handler(update, context)
@@ -367,7 +454,7 @@ async def admin_buttons_callback(update: Update, context: ContextTypes.DEFAULT_T
         if not groups:
             msg = "لا يوجد كروبات مفعلة حالياً."
         else:
-            msg = "📋 **الكروبات المفعلة حالياً:**\n\n"
+            msg = "📋 **سجل الكروبات المفعلة حالياً:**\n\n"
             for gid, title, exp in groups:
                 msg += f"• **الاسم:** {title}\n  **ID:** `{gid}`\n  **ينتهي بـ:** {exp}\n\n"
         
@@ -388,24 +475,48 @@ async def admin_buttons_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     elif data == "admin_help_guide":
         guide = (
-            "📖 **دليل ميزات البوت وكيفية استخدامه:**\n\n"
+            "📜 **دليل الشامل لجميع الميزات والأوامر:**\n\n"
             "1️⃣ **قاضي الجروب وقصف الجبهات:**\n"
-            "• `/قاضي`: يقرأ آخر 10 رسائل ويصدر حكماً ساخراً بين الأعضاء.\n"
-            "• `/قصف @username`: يولد قصف جبهة كوميدي للمستخدم.\n\n"
-            "2️⃣ **الاعترافات المجهولة:**\n"
-            "• يدخل العضو للبوت بالخاص، يضغط زر إرسال اعتراف، يختار الكروب ويكتب النص. يتم نشره بالكروب مجاناً وبشكل مجهول مع استطلاع رأي، بينما يظهر اسم المرسل للمدير في اللوحة.\n\n"
+            "• `/قاضي`: يقرأ أحدث 10 رسائل بالكروب ويصدر حكماً ساخراً بين الأعضاء.\n"
+            "• `/قصف` أو `/قصف @username`: توليد قصف جبهة مباشر وسريع.\n\n"
+            "2️⃣ **الاعترافات والرسائل المجهولة:**\n"
+            "• يرسل العضو رسالة بالخاص للبوت، ويختار الكروب ليتم نشرها مجهولة المصدر مع استطلاع رأي.\n"
+            "• يستطيع الأدمن معرفة هوية المرسل الحقيقية من زر 'سجل الاعترافات'.\n\n"
             "3️⃣ **قصة الجروب المجنونة:**\n"
-            "• `/قصة`: يبدأ لعبة القصة التفاعلية.\n"
-            "• `/سطر [النص]`: يضيف العضو سطراً للقصة، وبعد 5 مشاركات يدمجها الذكاء الاصطناعي بنهاية درامية."
+            "• `/قصة`: لبدء القصة.\n"
+            "• `/سطر [النص]`: إضافة سطر للقصة (عند اكتمال 5 أسطر يدمجها الذكاء الاصطناعي بنهاية درامية).\n\n"
+            "4️⃣ **الترخيص والاشتراك:**\n"
+            "• يتوقف البوت تلقائياً عن العمل في الكروب فور انتهاء مدة الأيام المحددة له."
         )
         keyboard = [[InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]]
         await query.edit_message_text(guide, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-# ==================== معالجة تفعيل الكروبات من الإدارة ====================
+    elif data == "admin_manage_admins":
+        admins = get_all_admins()
+        msg = f"👑 **إدارة الأدمنية:**\n\nالمدير الأساسي: `{MAIN_ADMIN_ID}`\n\n**الأدمنية الإضافيين:**\n"
+        for uid, dt in admins:
+            msg += f"• `{uid}` - أضيف بتاريخ: {dt}\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("➕ إضافة أدمن جديد", callback_data="admin_add_admin")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
+        ]
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data.startswith("admin_leave_grp_"):
+        gid = int(data.split("_")[3])
+        try:
+            await context.bot.leave_chat(gid)
+            await query.edit_message_text(f"✅ تم مغادرة الكروب `{gid}` بنجاح!")
+        except Exception as e:
+            await query.edit_message_text(f"❌ تعذر مغادرة الكروب: {e}")
+
+# ==================== معالجات لوحة الإدارة المتفاعلة (Conversations) ====================
+# 1. منح وتفعيل كروب
 async def admin_grant_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("أرسل الآن الـ ID الخاص بالكروب (مثال: `-100123456789`):\n\n*(يمكنك الحصول على ID الكروب عبر توجيه أي رسالة منه للبوت)*")
+    await query.edit_message_text("أرسل الآن الـ ID الخاص بالكروب (مثال: `-100123456789`):")
     return WAITING_GRANT_GROUP_ID
 
 async def admin_receive_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -422,7 +533,6 @@ async def admin_receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         days = int(update.message.text.strip())
         gid = context.user_data.get("grant_gid")
-        
         try:
             chat = await context.bot.get_chat(gid)
             title = chat.title
@@ -431,10 +541,7 @@ async def admin_receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         exp_date = add_or_update_group(gid, title, days)
         await update.message.reply_text(
-            f"✅ **تمت العملية بنجاح!**\n\n"
-            f"• الكروب: {title}\n"
-            f"• ID: `{gid}`\n"
-            f"• تاريخ الانتهاء: {exp_date}",
+            f"✅ **تمت عملية منح الكروب بنجاح!**\n\n• الكروب: {title}\n• ID: `{gid}`\n• ينتهي بتاريخ: {exp_date}",
             parse_mode="Markdown"
         )
         return ConversationHandler.END
@@ -442,10 +549,92 @@ async def admin_receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ يرجى إدخال عدد أيام صحيح كـ رقم.")
         return WAITING_GRANT_DAYS
 
+# 2. إضافة أدمن جديد
+async def admin_add_admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("أرسل الآن الآيدي (ID) الخاص بالأدمن الجديد:")
+    return WAITING_ADD_ADMIN_ID
+
+async def admin_receive_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        aid = int(update.message.text.strip())
+        add_admin_db(aid)
+        await update.message.reply_text(f"✅ تم إضافة المستخدم `{aid}` كـ أدمن جديد بنجاح بنسبة كامل الصلاحيات!")
+        return ConversationHandler.END
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال ID صحيح كـ رقم.")
+        return WAITING_ADD_ADMIN_ID
+
+# 3. مغادرة كروب
+async def admin_leave_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    groups = get_active_groups()
+    if not groups:
+        await query.edit_message_text("لا يوجد كروبات مفعلة لمغادرتها.")
+        return
+
+    keyboard = []
+    for gid, title, _ in groups:
+        keyboard.append([InlineKeyboardButton(f"🚪 مغادرة: {title}", callback_data=f"admin_leave_grp_{gid}")])
+    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")])
+
+    await query.edit_message_text("اختر الكروب الذي تريد أن يغادره البوت:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+# 4. إرسال رسالة خاصة لكروب
+async def admin_msg_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    groups = get_active_groups()
+    if not groups:
+        await query.edit_message_text("لا يوجد كروبات مفعلة لإرسال رسالة إليها.")
+        return
+
+    keyboard = []
+    for gid, title, _ in groups:
+        keyboard.append([InlineKeyboardButton(f"📢 {title}", callback_data=f"admin_select_msggrp_{gid}")])
+
+    await query.edit_message_text("اختر الكروب الذي تريد إرسال رسالة خاصة له:", reply_markup=InlineKeyboardMarkup(keyboard))
+    return WAITING_GROUP_MSG_TARGET
+
+async def admin_msg_group_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    gid = int(query.data.split("_")[3])
+    context.user_data["msg_target_gid"] = gid
+    await query.edit_message_text("اكتب الآن الرسالة التي تريد إرسالها للكروب:")
+    return WAITING_GROUP_MSG_TEXT
+
+async def admin_receive_group_msg_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    gid = context.user_data.get("msg_target_gid")
+    text = update.message.text
+    try:
+        await context.bot.send_message(chat_id=gid, text=f"📢 **رسالة من إدارات البوت:**\n\n{text}", parse_mode="Markdown")
+        await update.message.reply_text("✅ تم إرسال الرسالة إلى الكروب بنجاح!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل إرسال الرسالة: {e}")
+    return ConversationHandler.END
+
+# 5. قناة الاشتراك الإجباري
+async def admin_force_sub_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    curr = get_setting("force_channel") or "غير محددة"
+    await query.edit_message_text(f"القناة الحالية: {curr}\n\nأرسل الآن معرّف القناة الجديدة (مثال: `@mychannel`):")
+    return WAITING_FORCE_CHANNEL
+
+async def admin_receive_force_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ch = update.message.text.strip()
+    set_setting("force_channel", ch)
+    await update.message.reply_text(f"✅ تم ضبط قناة الاشتراك الإجباري إلى: {ch}")
+    return ConversationHandler.END
+
 # ==================== التشغيل الرئيسي ====================
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # محادثة تفعيل الكروبات
     grant_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_grant_start, pattern="^admin_grant$")],
         states={
@@ -455,6 +644,16 @@ def main():
         fallbacks=[]
     )
 
+    # محادثة إضافة أدمن
+    add_admin_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_add_admin_start, pattern="^admin_add_admin$")],
+        states={
+            WAITING_ADD_ADMIN_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_receive_admin_id)]
+        },
+        fallbacks=[]
+    )
+
+    # محادثة الاعترافات
     confess_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(confession_group_selected, pattern="^sendconf_")],
         states={
@@ -463,6 +662,26 @@ def main():
         fallbacks=[]
     )
 
+    # محادثة إرسال رسالة لكروب
+    msg_group_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_msg_group_start, pattern="^admin_msg_group_start$")],
+        states={
+            WAITING_GROUP_MSG_TARGET: [CallbackQueryHandler(admin_msg_group_selected, pattern="^admin_select_msggrp_")],
+            WAITING_GROUP_MSG_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_receive_group_msg_text)]
+        },
+        fallbacks=[]
+    )
+
+    # محادثة قناة الاشتراك الإجباري
+    force_sub_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_force_sub_start, pattern="^admin_force_sub_start$")],
+        states={
+            WAITING_FORCE_CHANNEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_receive_force_channel)]
+        },
+        fallbacks=[]
+    )
+
+    # تسجيل الأوامر العامة
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("admin", admin_panel_handler))
     app.add_handler(CommandHandler("قاضي", judge_handler))
@@ -470,14 +689,21 @@ def main():
     app.add_handler(CommandHandler("قصة", story_handler))
     app.add_handler(CommandHandler("سطر", add_story_line))
 
+    # تسجيل محادثات لوحة الإدارة والخدمات
     app.add_handler(grant_conv)
+    app.add_handler(add_admin_conv)
     app.add_handler(confess_conv)
+    app.add_handler(msg_group_conv)
+    app.add_handler(force_sub_conv)
+
     app.add_handler(CallbackQueryHandler(start_confession_callback, pattern="^start_confession$"))
+    app.add_handler(CallbackQueryHandler(admin_leave_start, pattern="^admin_leave_start$"))
     app.add_handler(CallbackQueryHandler(admin_buttons_callback, pattern="^admin_"))
 
+    # تسجيل معالج تعقب الرسائل للكروبات
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_messages))
 
-    print("🚀 البوت يعمل الآن بنجاح مع Groq...")
+    print("🚀 البوت يعمل الآن بنجاح...")
     app.run_polling()
 
 if __name__ == "__main__":
