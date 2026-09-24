@@ -13,17 +13,17 @@ from telegram.ext import (
     ConversationHandler,
     filters,
 )
-from google import genai
+from groq import Groq
 
 # ==================== الإعدادات الأساسية ====================
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN", "7999371850:AAFzy0dsBUuWyZ1Md_Kgj2EMH-N090KbIM0")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ADMIN_ID = 8577656131
 
 logging.basicConfig(level=logging.INFO)
 
-# إعداد عميل Gemini الذكي
-ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+# إعداد عميل Groq الذكي
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ذاكرة مؤقتة لرسائل الكروبات (لأجل ميزة القاضي) والقصص التفاعلية
 group_message_logs = defaultdict(lambda: deque(maxlen=10))
@@ -125,10 +125,10 @@ def get_confessions_log():
     conn.close()
     return rows
 
-# ==================== توليد الذكاء الاصطناعي باللهجة السورية ====================
+# ==================== توليد الذكاء الاصطناعي باللهجة السورية (Groq) ====================
 async def generate_syrian_ai(prompt: str) -> str:
-    if not ai_client:
-        return "لك يا خاي مفتاح الـ AI مو متفعل، حاكي المطور!"
+    if not groq_client:
+        return "لك يا خاي مفتاح الـ AI (Groq) مو متفعل، حاكي المطور!"
     
     system_instruction = (
         "أنت بوت تلجرام سوري مهضوم وساخر ومرح جداً. تحدث حصراً باللهجة السورية الشامية العفوية "
@@ -137,13 +137,18 @@ async def generate_syrian_ai(prompt: str) -> str:
     )
     
     try:
-        response = ai_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f"{system_instruction}\n\nالطلب: {prompt}"
+        completion = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1024,
         )
-        return response.text
+        return completion.choices[0].message.content
     except Exception as e:
-        logging.error(f"AI Error: {e}")
+        logging.error(f"Groq AI Error: {e}")
         return "العما! صرلي مشكلة بالدماغ الاصطناعي، جرب بعد شوي يا زلمة!"
 
 # ==================== الأوامر العامة والتحقق من الاشتراك ====================
@@ -155,7 +160,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat.type == "private":
         keyboard = [
-            [InlineKeyboardButton("🕵️ إرسال اعتراف مجهول", callback_query_data="start_confession")]
+            [InlineKeyboardButton("🕵️ إرسال اعتراف مجهول", callback_data="start_confession")]
         ]
         if user.id == ADMIN_ID:
             keyboard.append([InlineKeyboardButton("⚙️ لوحة الإدارة", callback_data="admin_panel")])
@@ -300,7 +305,6 @@ async def confession_group_selected(update: Update, context: ContextTypes.DEFAUL
     group_id = int(query.data.split("_")[1])
     context.user_data["confess_group_id"] = group_id
     
-    # جلب اسم الجروب
     active_groups = dict((g[0], g[1]) for g in get_active_groups())
     context.user_data["confess_group_title"] = active_groups.get(group_id, "الكروب")
 
@@ -313,15 +317,12 @@ async def receive_confession_text(update: Update, context: ContextTypes.DEFAULT_
     group_id = context.user_data.get("confess_group_id")
     group_title = context.user_data.get("confess_group_title")
 
-    # حفظ الاعتراف بسجل الإدارة للأمان ومعرفة المرسل
     log_confession(user.id, user.first_name, group_id, group_title, text)
 
-    # نشر الاعتراف بالكروب
     try:
         confess_msg = f"🕵️ **اعتراف مجهول جديد وصل للكروب:**\n\n« {text} »"
         await context.bot.send_message(chat_id=group_id, text=confess_msg, parse_mode="Markdown")
         
-        # إنشاء استطلاع رأي
         await context.bot.send_poll(
             chat_id=group_id,
             question="مين بتتوقعوا صاحب هالاعتراف المجهول؟ 🧐",
@@ -422,7 +423,6 @@ async def admin_receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE)
         days = int(update.message.text.strip())
         gid = context.user_data.get("grant_gid")
         
-        # محاولة جلب عنوان الجروب
         try:
             chat = await context.bot.get_chat(gid)
             title = chat.title
@@ -446,7 +446,6 @@ async def admin_receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # محادثات التفعيل للاستضافة/الإدارة
     grant_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_grant_start, pattern="^admin_grant$")],
         states={
@@ -456,7 +455,6 @@ def main():
         fallbacks=[]
     )
 
-    # محادثات الاعترافات المجهولة
     confess_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(confession_group_selected, pattern="^sendconf_")],
         states={
@@ -465,7 +463,6 @@ def main():
         fallbacks=[]
     )
 
-    # الأوامر الأساسية
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("admin", admin_panel_handler))
     app.add_handler(CommandHandler("قاضي", judge_handler))
@@ -473,16 +470,14 @@ def main():
     app.add_handler(CommandHandler("قصة", story_handler))
     app.add_handler(CommandHandler("سطر", add_story_line))
 
-    # الكولباك والأزرار
     app.add_handler(grant_conv)
     app.add_handler(confess_conv)
     app.add_handler(CallbackQueryHandler(start_confession_callback, pattern="^start_confession$"))
     app.add_handler(CallbackQueryHandler(admin_buttons_callback, pattern="^admin_"))
 
-    # تسجيل رسائل المجموعات لحفظ السياق للقاضي
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_messages))
 
-    print("🚀 البوت يعمل الآن بنجاح...")
+    print("🚀 البوت يعمل الآن بنجاح مع Groq...")
     app.run_polling()
 
 if __name__ == "__main__":
